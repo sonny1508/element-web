@@ -91,6 +91,8 @@ export function enumerateThemes(): { [key: string]: string } {
         "light": _t("common|light"),
         "light-high-contrast": _t("theme|light_high_contrast"),
         "dark": _t("common|dark"),
+        // Custom theme
+        "glenda-light": "Glenda Light",
     };
     const customThemes = SettingsStore.getValue("custom_themes") || [];
     const customThemeNames: Record<string, string> = {};
