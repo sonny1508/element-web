@@ -242,6 +242,17 @@ const transformEvent = (event: MatrixEvent, cli: MatrixClient): { type: string; 
     const userId = cli.getSafeUserId();
     attachMentions(userId, content, model, undefined);
 
+    // Include original sender name
+    const originalSenderId = event.getSender();
+    // const originalSenderName = event.sender?.name || originalSenderId;
+    
+    // Extract just the local part (remove domain)
+    const originalSenderIdLocal = originalSenderId?.split(":")[0] || originalSenderId;
+
+    content.formatted_body = `<p>Forwarded from <strong>${originalSenderIdLocal}</strong></p>\n<p></p>\n${content.body || ''}`;
+
+    content.format = "org.matrix.custom.html";
+
     return { type, content };
 };
 
