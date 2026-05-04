@@ -65,6 +65,7 @@ const cssThemes = {
     "theme-dark-custom": "./res/themes/dark-custom/css/dark-custom.pcss",
     // Custom themes
     "theme-glenda-light": "./res/themes/glenda-light/css/glenda-light.pcss",
+    "theme-glenda-dark": "./res/themes/glenda-dark/css/glenda-dark.pcss",
 };
 
 // See docs/customisations.md
