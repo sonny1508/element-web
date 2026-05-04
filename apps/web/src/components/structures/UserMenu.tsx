@@ -102,7 +102,7 @@ const ThemeSwitchButton = (): JSX.Element => {
         // Disable system theme matching if the user hits this button
         SettingsStore.setValue("use_system_theme", null, SettingLevel.DEVICE, false);
 
-        let newTheme = isDark ? "light" : "dark";
+        let newTheme = isDark ? "glenda-light" : "glenda-dark"; // modified
         if (isHighContrast) {
             const hcTheme = findHighContrastTheme(newTheme);
             if (hcTheme) {

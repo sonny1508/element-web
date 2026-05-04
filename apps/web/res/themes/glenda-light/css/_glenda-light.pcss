@@ -3,6 +3,21 @@
     --emoji-font-family: "";
 }
 
+:root,
+.cpd-theme-light,
+.cpd-theme-dark,
+[class*="cpd-theme"] {
+    --cpd-color-icon-accent-primary: var(--cpd-color-red-900);
+    --cpd-color-text-action-accent: var(--cpd-color-red-900);
+    --cpd-color-bg-action-primary-rest: var(--cpd-color-red-900);
+    --cpd-color-bg-action-primary-hovered: color-mix(in srgb, var(--cpd-color-red-900) 85%, black);
+    --cpd-color-bg-action-primary-pressed: color-mix(in srgb, var(--cpd-color-red-900) 70%, black);
+    --cpd-color-border-interactive-primary: var(--cpd-color-red-900);
+    --cpd-color-text-link: var(--cpd-color-red-900);
+    --cpd-color-green-900: var(--cpd-color-red-900);
+    --cpd-color-green-1000: var(--cpd-color-red-1000);
+}
+
 /* Nunito and Inter lacks combining diacritics, so these will fall through
    to the next font. Helevetica's diacritics sometimes do not combine
    nicely (on OSX, at least) and result in a huge horizontal mess.
@@ -22,6 +37,10 @@ $monospace-font-family:
 $gs-color-red-primary: "#6b0914";
 
 .mx_RoomListPanel {
+    background-color: #D9D9D9 !important;
+}
+
+.mx_SpacePanel.newUi {
     background-color: #D9D9D9 !important;
 }
 
@@ -286,7 +305,7 @@ $voice-record-icon-color: $tertiary-content;
 
 /* Bubble tiles */
 /* ******************** */
-$eventbubble-self-bg: var(--cpd-color-red-500); // modified
+$eventbubble-self-bg: var(--cpd-color-red-600); // modified
 $eventbubble-others-bg: var(--cpd-color-gray-300);
 $eventbubble-bg-hover: var(--cpd-color-bg-subtle-secondary);
 /* ******************** */
