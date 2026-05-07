@@ -6,6 +6,38 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
+/* Customize Forward -> Reply text format */
+.mx_ForwardDialog_optionalMessage {
+    padding: 12px 0;
+
+    label {
+        display: block;
+        font-size: $font-13px;
+        color: $secondary-content;
+        margin-bottom: 6px;
+    }
+}
+
+.mx_ForwardDialog_messageTextarea {
+    width: 100%;
+    min-height: 72px;
+    resize: vertical;
+    border: 1px solid $input-border-color;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: $font-14px;
+    background: $background;
+    color: $primary-content;
+    box-sizing: border-box;
+
+    &:focus {
+        outline: none;
+        border-color: $accent;
+    }
+}
+
+/* Original */
 .mx_ForwardDialog {
     width: 520px;
     color: $primary-content;
