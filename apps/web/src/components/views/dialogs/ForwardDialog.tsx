@@ -81,6 +81,8 @@ interface IEntryProps<K extends keyof TimelineEvents> {
     type: K;
     content: TimelineEvents[K];
     matrixClient: MatrixClient;
+    originalEvent: MatrixEvent; // modified
+    optionalMessage: string; // modified
     onFinished(this: void, success: boolean): void;
 }
 
@@ -91,7 +93,7 @@ enum SendState {
     Failed,
 }
 
-const Entry: React.FC<IEntryProps<any>> = ({ room, type, content, matrixClient: cli, onFinished }) => {
+const Entry: React.FC<IEntryProps<any>> = ({ room, type, content, matrixClient: cli, originalEvent, optionalMessage, onFinished }) => {
     const [sendState, setSendState] = useState<SendState>(SendState.CanSend);
     const [onFocus, isActive, ref] = useRovingTabIndex<HTMLDivElement>();
 
@@ -104,10 +106,15 @@ const Entry: React.FC<IEntryProps<any>> = ({ room, type, content, matrixClient: 
         });
         onFinished(true);
     };
-    const send = async (): Promise<void> => {
+    const send = async (): Promise<void> => { // Modified
         setSendState(SendState.Sending);
         try {
-            await cli.sendEvent(room.roomId, type, content);
+            const { type: replyType, content: replyContent } = buildReplyForwardContent(
+                        originalEvent,
+                        cli,
+                        optionalMessage,
+            );
+            await cli.sendEvent(room.roomId, replyType, replyContent);
             setSendState(SendState.Sent);
         } catch {
             setSendState(SendState.Failed);
@@ -242,28 +249,56 @@ const transformEvent = (event: MatrixEvent, cli: MatrixClient): { type: string; 
     const userId = cli.getSafeUserId();
     attachMentions(userId, content, model, undefined);
 
-    // Include original sender name
-    const originalSenderId = event.getSender();
-    // const originalSenderName = event.sender?.name || originalSenderId;
-    
-    // Extract just the local part (remove domain)
-    const originalSenderIdLocal = originalSenderId?.split(":")[0] || originalSenderId;
+    return { type, content }; // Modified 
+};
 
-    content.formatted_body = `<p>Forwarded from <strong>${originalSenderIdLocal}</strong></p>\n<p></p>\n${content.body || ''}`;
+// customize Forward -> Reply text format
+const buildReplyForwardContent = (
+    event: MatrixEvent,
+    cli: MatrixClient,
+    optionalMessage: string,
+): { type: string; content: IContent } => {
+    const originalSenderId = event.getSender() ?? "";
+    const originalEventId = event.getId() ?? "";
+    const originalRoomId = event.getRoomId() ?? "";
 
-    content.format = "org.matrix.custom.html";
+    // Get the original body (text fallback)
+    const originalContent = event.getContent();
+    const originalBody: string = originalContent.body ?? "";
 
-    return { type, content };
+    // Construct fallback plain text body (Matrix reply format)
+    const replyFallback = `> <${originalSenderId}> ${originalBody}`;
+    const fullBody = optionalMessage
+        ? `${replyFallback}\n\n${optionalMessage}`
+        : replyFallback;
+
+    // Construct HTML formatted body
+    const originalHtml: string = originalContent.formatted_body ?? originalBody;
+    const replyHtml =
+        (optionalMessage ? `<p>${optionalMessage}</p>` : "") +
+        `<mx-reply><blockquote>` +
+        `<a href="https://matrix.to/#/${originalSenderId}">${originalSenderId}</a>` +
+        `<br>${originalHtml}</blockquote></mx-reply>`;
+
+    const content: IContent = {
+        msgtype: "m.text",
+        body: fullBody,
+        format: "org.matrix.custom.html",
+        formatted_body: replyHtml
+    };
+
+    return { type: EventType.RoomMessage, content };
 };
 
 const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, permalinkCreator, onFinished }) => {
     const userId = cli.getSafeUserId();
     const [profileInfo, setProfileInfo] = useState<any>({});
+    const [optionalMessage, setOptionalMessage] = useState("");
     useEffect(() => {
         cli.getProfileInfo(userId).then((info) => setProfileInfo(info));
     }, [cli, userId]);
 
-    const { type, content } = transformEvent(event, cli);
+    const { type, content } = buildReplyForwardContent(event, cli, optionalMessage);
 
     // For the message preview we fake the sender as ourselves
     const mockEvent = new MatrixEvent({
@@ -360,6 +395,20 @@ const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, permalinkCr
                 />
             </div>
             <hr />
+            <div className="mx_ForwardDialog_optionalMessage">
+                <label htmlFor="mx_ForwardDialog_messageInput">
+                    Add a message (optional)
+                </label>
+                <textarea
+                    id="mx_ForwardDialog_messageInput"
+                    className="mx_ForwardDialog_messageTextarea"
+                    value={optionalMessage}
+                    onChange={(e) => setOptionalMessage(e.target.value)}
+                    placeholder="Write something..."
+                    rows={3}
+                />
+            </div>
+            <hr />
             <RovingTabIndexProvider
                 handleUpDown
                 handleInputFields
@@ -413,6 +462,8 @@ const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, permalinkCr
                                                         type={type}
                                                         content={content}
                                                         matrixClient={cli}
+                                                        originalEvent={event}
+                                                        optionalMessage={optionalMessage}
                                                         onFinished={onFinished}
                                                     />
                                                 ))
