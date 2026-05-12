@@ -1,0 +1,55 @@
+# .github/workflows/build-glenda-prepare.yml
+name: Prepare Glenda Desktop Build
+
+on:
+  workflow_call:
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/desktop/.node-version
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Copy config
+        run: cp apps/desktop/glenda-studio/config.json apps/web/
+
+      - name: Build Element Web
+        run: pnpm --filter element-web run build
+
+      - name: Package as asar
+        working-directory: apps/desktop
+        run: |
+          mv ../web/webapp .
+          pnpm run asar-webapp
+
+      - name: Generate cache key files
+        working-directory: apps/desktop
+        run: |
+          pnpm --silent electron --no-sandbox --version > electronVersion
+          cat package.json | jq -c .hakDependencies | sha1sum > hakHash
+          find hak -type f -print0 | xargs -0 sha1sum >> hakHash
+          find scripts/hak -type f -print0 | xargs -0 sha1sum >> hakHash
+
+      - name: Copy variant config
+        run: cp apps/desktop/glenda-studio/build.json apps/desktop/variant.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webapp
+          retention-days: 1
+          path: |
+            apps/desktop/webapp.asar
+            apps/desktop/electronVersion
+            apps/desktop/hakHash
+            apps/desktop/variant.json

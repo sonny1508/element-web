@@ -1,0 +1,7 @@
+{
+    "appId": "com.glenda.studio.chat",
+    "name": "glenda-desktop",
+    "productName": "Glenda Studio Chat",
+    "description": "Glenda Studio internal communication",
+    "protocols": ["io.element.desktop", "element"]
+}

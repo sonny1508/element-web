@@ -1,0 +1,23 @@
+      {
+          "default_server_config": {
+              "m.homeserver": {
+                  "base_url": "https://matrix.glenda-studio-chat.com",
+                  "server_name": "glenda-studio-chat.com"
+              }
+          },
+          "default_theme": "glenda-dark",
+          "setting_defaults": {
+              "breadcrumbs": false,
+              "layout": "bubble",
+              "RoomList.showMessagePreview": true,
+              "alwaysShowTimestamps": true
+          },
+          "roomCreationDefaults": {
+              "historyVisibility": "shared"
+          },
+          "show_labs_settings": false,
+          "features": {
+              "feature_group_calls": false,
+              "feature_video_rooms": false
+          }
+      }
