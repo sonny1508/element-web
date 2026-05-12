@@ -1,0 +1,131 @@
+/*
+ * _MImageGallery.scss
+ *
+ * Drop at:
+ *   res/css/views/messages/_MImageGallery.scss
+ *
+ * Then import it in res/css/views/messages/_index.scss (or wherever your
+ * message-body partials are imported) by adding:
+ *
+ *   @import "./_MImageGallery";
+ */
+
+// The gallery sits inside a normal EventTile content area.
+// We constrain its width to match the typical MImageBody max-width so it
+// doesn't expand to fill the full timeline width.
+.mx_MImageGallery {
+    // Match the maximum width element-web uses for image thumbnails.
+    // Adjust if your theme differs.
+    max-width: 324px;
+    width: 100%;
+}
+
+// -------------------------------------------------------------------------
+// Grid container
+// -------------------------------------------------------------------------
+
+.mx_MImageGallery_grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 2px;
+    border-radius: 8px;
+    overflow: hidden;
+    // Maintain a square overall bounding box so images look consistent.
+    // Change this aspect-ratio if you prefer rectangular albums.
+    aspect-ratio: 1 / 1;
+
+    // Expanded mode: let rows grow naturally, remove the square constraint.
+    &--expanded {
+        grid-template-rows: unset;
+        grid-auto-rows: 1fr;
+        aspect-ratio: unset;
+        // Each expanded cell is also square on its own.
+        .mx_MImageGallery_cell {
+            aspect-ratio: 1 / 1;
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
+// Individual cell
+// -------------------------------------------------------------------------
+
+.mx_MImageGallery_cell {
+    position: relative;
+    overflow: hidden;
+    // Cells fill their grid area completely.
+    min-width: 0;
+    min-height: 0;
+
+    // Override MImageBody's own sizing so the image fills the cell.
+    // MImageBody sets max-width/max-height via inline styles on its container;
+    // we need to neutralise those here so the cell controls the dimensions.
+    .mx_MImageBody {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .mx_MImageBody_thumbnail_container {
+        // Override the inline max-width/max-height MImageBody injects.
+        max-width: 100% !important;
+        max-height: 100% !important;
+        width: 100% !important;
+        height: 100% !important;
+        aspect-ratio: unset !important;
+    }
+
+    .mx_MImageBody_thumbnail {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        // Prevent the img from having its own size constraints.
+        max-width: unset;
+        max-height: unset;
+        display: block;
+    }
+
+    // The wrapping <a> tag inside MImageBody also needs to fill the cell.
+    > .mx_MImageBody > a {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+// -------------------------------------------------------------------------
+// "+N more" overlay on the last visible cell
+// -------------------------------------------------------------------------
+
+.mx_MImageGallery_overflow {
+    // Stretch over the entire cell.
+    position: absolute;
+    inset: 0;
+    // Semi-transparent dark scrim.
+    background: rgba(0, 0, 0, 0.55);
+    // Reset button defaults.
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    // Center the label.
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    // Typography.
+    color: #ffffff;
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+
+    &:hover {
+        background: rgba(0, 0, 0, 0.45);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--cpd-color-border-focused, #0dbd8b);
+        outline-offset: -2px;
+    }
+}
