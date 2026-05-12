@@ -58,8 +58,6 @@ import { _t } from "../../languageHandler";
 import { getLateEventInfo } from "./grouper/LateEventGrouper";
 import { DateSeparatorViewModel } from "../../viewmodels/room/timeline/DateSeparatorViewModel";
 
-import MImageGallery from "../views/messages/MImageGallery";
-
 const CONTINUATION_MAX_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const continuedTypes = [EventType.Sticker, EventType.RoomMessage];
 
@@ -645,9 +643,12 @@ export default class MessagePanel extends React.Component<IProps, IState> {
 
         let foundLastSuccessfulEvent = false;
         let lastShownNonLocalEchoIndex = -1;
+        // Find the indices of the last successful event we sent and the last non-local-echo events shown
         for (let i = events.length - 1; i >= 0; i--) {
             const { event, shouldShow } = events[i];
-            if (!shouldShow) continue;
+            if (!shouldShow) {
+                continue;
+            }
 
             if (lastShownEvent === undefined) {
                 lastShownEvent = event;
@@ -655,6 +656,9 @@ export default class MessagePanel extends React.Component<IProps, IState> {
 
             if (!foundLastSuccessfulEvent && this.isSentState(event) && isEligibleForSpecialReceipt(event)) {
                 foundLastSuccessfulEvent = true;
+                // If we are not sender of this last successful event eligible for special receipt then we stop here
+                // As we do not want to render our sent receipt if there are more receipts below it and events sent
+                // by other users get a synthetic read receipt for their sent events.
                 if (event.getSender() === userId) {
                     events[i].lastSuccessfulWeSent = true;
                 }
@@ -664,92 +668,23 @@ export default class MessagePanel extends React.Component<IProps, IState> {
                 lastShownNonLocalEchoIndex = i;
             }
 
-            if (lastShownNonLocalEchoIndex >= 0 && foundLastSuccessfulEvent) break;
+            if (lastShownNonLocalEchoIndex >= 0 && foundLastSuccessfulEvent) {
+                break;
+            }
         }
 
         const ret: ReactNode[] = [];
-        let prevEvent: MatrixEvent | null = null;
+        let prevEvent: MatrixEvent | null = null; // the last event we showed
 
+        // Note: the EventTile might still render a "sent/sending receipt" independent of
+        // this information. When not providing read receipt information, the tile is likely
+        // to assume that sent receipts are to be shown more often.
         this.readReceiptsByEvent = new Map();
         if (this.props.showReadReceipts) {
             this.readReceiptsByEvent = this.getReadReceiptsByShownEvent(events);
         }
 
         let grouper: BaseGrouper | null = null;
-
-        // ← NEW: buffer for consecutive visible image events from the same sender
-        let imageRun: MatrixEvent[] = [];
-        let imageRunSender: string | undefined;
-
-        /**
-         * Flush the current imageRun buffer into the ret array.
-         * If only one image accumulated, emit it as a normal EventTile.
-         * If two or more, emit a MImageGallery.
-         *
-         * @param flushPrevEvent - the prevEvent value to restore after flushing
-         */
-        const flushImageRun = (flushPrevEvent: MatrixEvent | null): MatrixEvent | null => {
-            if (imageRun.length === 0) return flushPrevEvent;
-
-            if (imageRun.length === 1) {
-                // Single image — find its WrappedEvent and emit normally.
-                const single = imageRun[0];
-                const wrappedSingle = events.find((e) => e.event === single)!;
-                const singleId = single.getId()!;
-                ret.push(
-                    <EventTile
-                        key={single.getTxnId() || singleId}
-                        as="li"
-                        ref={this.collectEventTile.bind(this, singleId)}
-                        alwaysShowTimestamps={this.props.alwaysShowTimestamps}
-                        mxEvent={single}
-                        continuation={false}
-                        isRedacted={single.isRedacted()}
-                        replacingEventId={single.replacingEventId()}
-                        editState={this.props.editState?.getEvent().getId() === singleId ? this.props.editState : undefined}
-                        resizeObserver={this.resizeObserver}
-                        readReceipts={this.readReceiptsByEvent.get(singleId)}
-                        readReceiptMap={this.readReceiptMap}
-                        showUrlPreview={this.props.showUrlPreview}
-                        checkUnmounting={this.isUnmounting}
-                        eventSendStatus={single.getAssociatedStatus() ?? undefined}
-                        isTwelveHour={this.props.isTwelveHour}
-                        permalinkCreator={this.props.permalinkCreator}
-                        last={single === lastShownEvent}
-                        lastInSection={true}
-                        lastSuccessful={wrappedSingle.lastSuccessfulWeSent}
-                        isSelectedEvent={singleId === this.props.highlightedEventId}
-                        getRelationsForEvent={this.props.getRelationsForEvent}
-                        showReactions={this.props.showReactions}
-                        layout={this.props.layout}
-                        showReadReceipts={this.props.showReadReceipts}
-                        callEventGrouper={this.props.callEventGroupers.get(single.getContent().call_id)}
-                        hideSender={this.state.hideSender}
-                    />,
-                );
-            } else {
-                // Multiple images — emit as a gallery.
-                // Use the first event's ID as the React key for the gallery tile.
-                const firstId = imageRun[0].getId()!;
-                ret.push(
-                    <li key={`gallery-${firstId}`} className="mx_EventTile mx_EventTile_images">
-                        <MImageGallery
-                            events={imageRun}
-                            highlights={this.props.room ? undefined : undefined}
-                            permalinkCreator={this.props.permalinkCreator}
-                            getRelationsForEvent={this.props.getRelationsForEvent}
-                            onHeightChanged={this.onHeightChanged}
-                        />
-                    </li>,
-                );
-            }
-
-            const last = imageRun[imageRun.length - 1];
-            imageRun = [];
-            imageRunSender = undefined;
-            return last;
-        };
-        // ← END NEW helpers
 
         for (let i = 0; i < events.length; i++) {
             const wrappedEvent = events[i];
@@ -763,6 +698,8 @@ export default class MessagePanel extends React.Component<IProps, IState> {
                     grouper.add(wrappedEvent);
                     continue;
                 } else {
+                    // not part of group, so get the group tiles, close the
+                    // group, and continue like a normal event
                     ret.push(...grouper.getTiles());
                     prevEvent = grouper.getNewPrevEvent();
                     grouper = null;
@@ -779,51 +716,26 @@ export default class MessagePanel extends React.Component<IProps, IState> {
                         nextEventAndShouldShow,
                         nextTile,
                     );
-                    break;
+                    break; // break on first grouper
                 }
             }
 
             if (!grouper) {
                 if (shouldShow) {
-                    // ← NEW: image-run grouping logic
-                    const isImage =
-                        event.getContent()?.msgtype === "m.image" &&
-                        !event.isRedacted();
-                    const sender = event.getSender();
-                    const sameRun = isImage && sender !== undefined && sender === imageRunSender;
-                    const startsNewRun = isImage && sender !== undefined && imageRun.length === 0;
-
-                    if (sameRun) {
-                        // Continue an existing image run.
-                        imageRun.push(event);
-                        prevEvent = event;
-                    } else if (startsNewRun) {
-                        // Start a fresh image run (first image in a potential sequence).
-                        imageRun.push(event);
-                        imageRunSender = sender;
-                        prevEvent = event;
-                    } else {
-                        // Non-image event (or image from a different sender):
-                        // flush any pending image run first, then render this event normally.
-                        prevEvent = flushImageRun(prevEvent);
-
-                        ret.push(
-                            ...this.getTilesForEvent(
-                                prevEvent,
-                                wrappedEvent,
-                                last,
-                                false,
-                                nextEventAndShouldShow,
-                                nextTile,
-                            ),
-                        );
-                        prevEvent = event;
-                    }
-                    // ← END NEW
-                } else {
-                    // Event is not shown — flush any image run before processing
-                    // the read-marker so the marker lands in the right position.
-                    prevEvent = flushImageRun(prevEvent);
+                    // make sure we unpack the array returned by getTilesForEvent,
+                    // otherwise React will auto-generate keys, and we will end up
+                    // replacing all the DOM elements every time we paginate.
+                    ret.push(
+                        ...this.getTilesForEvent(
+                            prevEvent,
+                            wrappedEvent,
+                            last,
+                            false,
+                            nextEventAndShouldShow,
+                            nextTile,
+                        ),
+                    );
+                    prevEvent = event;
                 }
 
                 const readMarker = this.readMarkerForEvent(eventId, i >= lastShownNonLocalEchoIndex);
@@ -834,10 +746,6 @@ export default class MessagePanel extends React.Component<IProps, IState> {
         if (grouper) {
             ret.push(...grouper.getTiles());
         }
-
-        // ← NEW: flush any trailing image run at the end of the event list
-        flushImageRun(prevEvent);
-        // ← END NEW
 
         return ret;
     }
