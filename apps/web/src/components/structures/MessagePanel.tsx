@@ -479,6 +479,11 @@ export default class MessagePanel extends React.Component<IProps, IState> {
 
     // TODO: Implement granular (per-room) hide options
     public shouldShowEvent(mxEv: MatrixEvent, forceHideEvents = false): boolean {
+        // Hide all m.room.member state events (joins, leaves, avatar changes, etc.)
+        if (mxEv.getType() === "m.room.member") {
+            return false;
+        }
+        
         if (this.props.hideThreadedMessages && this.props.room) {
             const { shouldLiveInRoom } = this.props.room.eventShouldLiveIn(mxEv, this.props.events);
             if (!shouldLiveInRoom) {
