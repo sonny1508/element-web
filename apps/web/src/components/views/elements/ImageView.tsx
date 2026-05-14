@@ -12,6 +12,8 @@ import React, { type JSX, createRef, type CSSProperties, useEffect } from "react
 import FocusLock from "react-focus-lock";
 import { type MatrixEvent } from "matrix-js-sdk/src/matrix";
 import {
+    ChevronLeftIcon,
+    ChevronRightIcon,
     CloseIcon,
     DownloadIcon,
     OverflowHorizontalIcon,
@@ -60,6 +62,16 @@ const getPanelHeight = (): number => {
     return parseInt(value.slice(0, value.length - 2));
 };
 
+export interface GalleryImage {
+    src: string;
+    name?: string;
+    width?: number;
+    height?: number;
+    fileSize?: number;
+    mxEvent?: MatrixEvent;
+    permalinkCreator?: RoomPermalinkCreator;
+}
+
 interface IProps {
     src: string; // the source of the image being displayed
     name?: string; // the main title ('name') for the image
@@ -81,6 +93,10 @@ interface IProps {
         width: number;
         height: number;
     };
+
+    images?: GalleryImage[];
+    initialIndex?: number;
+
     onFinished(): void;
 }
 
@@ -93,6 +109,7 @@ interface IState {
     translationY: number;
     moving: boolean;
     contextMenuDisplayed: boolean;
+    currentIndex: number;
 }
 
 export default class ImageView extends React.Component<IProps, IState> {
@@ -121,6 +138,7 @@ export default class ImageView extends React.Component<IProps, IState> {
             translationY,
             moving: false,
             contextMenuDisplayed: false,
+            currentIndex: this.props.initialIndex ?? 0,
         };
     }
 
@@ -139,6 +157,26 @@ export default class ImageView extends React.Component<IProps, IState> {
 
     private animatingLoading = false;
     private imageIsLoaded = false;
+    private navigating = false;
+
+    private get hasGallery(): boolean {
+        return !!this.props.images && this.props.images.length > 1;
+    }
+
+    private get currentImage(): GalleryImage {
+        if (this.props.images && this.props.images.length > 0) {
+            return this.props.images[this.state.currentIndex];
+        }
+        return {
+            src: this.props.src,
+            name: this.props.name,
+            width: this.props.width,
+            height: this.props.height,
+            fileSize: this.props.fileSize,
+            mxEvent: this.props.mxEvent,
+            permalinkCreator: this.props.permalinkCreator,
+        };
+    }
 
     public componentDidMount(): void {
         // We have to use addEventListener() because the listener
@@ -158,6 +196,15 @@ export default class ImageView extends React.Component<IProps, IState> {
 
     private imageLoaded = (): void => {
         if (!this.image.current) return;
+
+        if (this.navigating) {
+            this.navigating = false;
+            this.imageIsLoaded = true;
+            this.setZoomAndRotation();
+            this.setState({ translationX: 0, translationY: 0 });
+            return;
+        }
+
         // First, we calculate the zoom, so that the image has the same size as
         // the thumbnail
         const { thumbnailInfo } = this.props;
@@ -304,6 +351,20 @@ export default class ImageView extends React.Component<IProps, IState> {
     };
 
     private onKeyDown = (ev: KeyboardEvent): void => {
+        if (this.hasGallery) {
+            if (ev.key === "ArrowLeft") {
+                ev.stopPropagation();
+                ev.preventDefault();
+                this.onPrevImage();
+                return;
+            } else if (ev.key === "ArrowRight") {
+                ev.stopPropagation();
+                ev.preventDefault();
+                this.onNextImage();
+                return;
+            }
+        }
+
         const action = getKeyBindingsManager().getAccessibilityAction(ev);
         switch (action) {
             case KeyBindingAction.Escape:
@@ -331,6 +392,35 @@ export default class ImageView extends React.Component<IProps, IState> {
         this.setZoomAndRotation(cur + 90);
     };
 
+    private navigateToImage(index: number): void {
+        this.navigating = true;
+        this.imageIsLoaded = false;
+        this.setState({
+            currentIndex: index,
+            rotation: 0,
+            translationX: 0,
+            translationY: 0,
+        });
+    }
+
+    private get hasPrevImage(): boolean {
+        return this.hasGallery && this.state.currentIndex > 0;
+    }
+
+    private get hasNextImage(): boolean {
+        return this.hasGallery && this.state.currentIndex < (this.props.images!.length - 1);
+    }
+
+    private onPrevImage = (): void => {
+        if (!this.hasPrevImage) return;
+        this.navigateToImage(this.state.currentIndex - 1);
+    };
+
+    private onNextImage = (): void => {
+        if (!this.hasNextImage) return;
+        this.navigateToImage(this.state.currentIndex + 1);
+    };
+
     private onOpenContextMenu = (): void => {
         this.setState({
             contextMenuDisplayed: true,
@@ -351,11 +441,12 @@ export default class ImageView extends React.Component<IProps, IState> {
         // This allows the permalink to be opened in a new tab/window or copied as
         // matrix.to, but also for it to enable routing within Element when clicked.
         ev.preventDefault();
+        const mxEvent = this.currentImage.mxEvent;
         dis.dispatch<ViewRoomPayload>({
             action: Action.ViewRoom,
-            event_id: this.props.mxEvent?.getId(),
+            event_id: mxEvent?.getId(),
             highlighted: true,
-            room_id: this.props.mxEvent?.getRoomId(),
+            room_id: mxEvent?.getRoomId(),
             metricsTrigger: undefined, // room doesn't change
         });
         this.props.onFinished();
@@ -414,13 +505,14 @@ export default class ImageView extends React.Component<IProps, IState> {
     };
 
     private renderContextMenu(): JSX.Element {
+        const img = this.currentImage;
         let contextMenu: JSX.Element | undefined;
-        if (this.state.contextMenuDisplayed && this.props.mxEvent) {
+        if (this.state.contextMenuDisplayed && img.mxEvent) {
             contextMenu = (
                 <MessageContextMenu
                     {...aboveLeftOf(this.contextMenuButton.current.getBoundingClientRect())}
-                    mxEvent={this.props.mxEvent}
-                    permalinkCreator={this.props.permalinkCreator}
+                    mxEvent={img.mxEvent}
+                    permalinkCreator={img.permalinkCreator}
                     onFinished={this.onCloseContextMenu}
                     onCloseDialog={this.props.onFinished}
                 />
@@ -431,10 +523,12 @@ export default class ImageView extends React.Component<IProps, IState> {
     }
 
     public render(): React.ReactNode {
-        const showEventMeta = !!this.props.mxEvent;
+        const img = this.currentImage;
+        const showEventMeta = !!img.mxEvent;
 
         let transitionClassName;
-        if (this.animatingLoading) transitionClassName = "mx_ImageView_image_animatingLoading";
+        if (this.navigating) transitionClassName = "";
+        else if (this.animatingLoading) transitionClassName = "mx_ImageView_image_animatingLoading";
         else if (this.state.moving || !this.imageIsLoaded) transitionClassName = "";
         else transitionClassName = "mx_ImageView_image_animating";
 
@@ -453,17 +547,21 @@ export default class ImageView extends React.Component<IProps, IState> {
                         rotate(${rotationDegrees})`,
         };
 
+        if (this.navigating) {
+            style.opacity = 0;
+        }
+
         if (this.state.moving) style.cursor = "grabbing";
         else if (this.state.zoom === this.state.minZoom) style.cursor = "zoom-in";
         else style.cursor = "zoom-out";
 
         let info: JSX.Element | undefined;
         if (showEventMeta) {
-            const mxEvent = this.props.mxEvent!;
+            const mxEvent = img.mxEvent!;
             const showTwelveHour = SettingsStore.getValue("showTwelveHourTimestamps");
             let permalink = "#";
-            if (this.props.permalinkCreator) {
-                permalink = this.props.permalinkCreator.forEvent(mxEvent.getId()!);
+            if (img.permalinkCreator) {
+                permalink = img.permalinkCreator.forEvent(mxEvent.getId()!);
             }
 
             const senderName = mxEvent.sender?.name ?? mxEvent.getSender();
@@ -506,7 +604,7 @@ export default class ImageView extends React.Component<IProps, IState> {
         }
 
         let contextMenuButton: JSX.Element | undefined;
-        if (this.props.mxEvent) {
+        if (img.mxEvent) {
             contextMenuButton = (
                 <ContextMenuTooltipButton
                     className="mx_ImageView_button mx_ImageView_button_more"
@@ -521,13 +619,19 @@ export default class ImageView extends React.Component<IProps, IState> {
         }
 
         let title: JSX.Element | undefined;
-        if (this.props.mxEvent?.getContent()) {
+        if (img.mxEvent?.getContent()) {
             title = (
                 <div className="mx_ImageView_title">
-                    {presentableTextForFile(this.props.mxEvent?.getContent(), _t("common|image"), true)}
+                    {presentableTextForFile(img.mxEvent.getContent(), _t("common|image"), true)}
                 </div>
             );
         }
+
+        const galleryCounter = this.hasGallery ? (
+            <div className="mx_ImageView_title">
+                {this.state.currentIndex + 1} / {this.props.images!.length}
+            </div>
+        ) : undefined;
 
         return (
             <FocusLock
@@ -542,7 +646,7 @@ export default class ImageView extends React.Component<IProps, IState> {
             >
                 <div className="mx_ImageView_panel">
                     {info}
-                    {title}
+                    {galleryCounter || title}
                     <div className="mx_ImageView_toolbar">
                         <AccessibleButton
                             className="mx_ImageView_button"
@@ -573,9 +677,10 @@ export default class ImageView extends React.Component<IProps, IState> {
                             <RotateRightIcon />
                         </AccessibleButton>
                         <DownloadButton
-                            url={this.props.src}
-                            fileName={this.props.name}
-                            mxEvent={this.props.mxEvent}
+                            key={img.src}
+                            url={img.src}
+                            fileName={img.name}
+                            mxEvent={img.mxEvent}
                             onDownloadReady={this.onDownloadFunctionReady}
                         />
                         {contextMenuButton}
@@ -597,15 +702,35 @@ export default class ImageView extends React.Component<IProps, IState> {
                     onMouseUp={this.onEndMoving}
                     onMouseLeave={this.onEndMoving}
                 >
+                    {this.hasPrevImage && (
+                        <AccessibleButton
+                            className="mx_ImageView_nav mx_ImageView_nav_prev"
+                            title={_t("action|previous")}
+                            onClick={this.onPrevImage}
+                            onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+                        >
+                            <ChevronLeftIcon />
+                        </AccessibleButton>
+                    )}
                     <img
-                        src={this.props.src}
+                        src={img.src}
                         style={style}
-                        alt={this.props.name}
+                        alt={img.name}
                         ref={this.image}
                         className={`mx_ImageView_image ${transitionClassName}`}
                         draggable={true}
                         onMouseDown={this.onStartMoving}
                     />
+                    {this.hasNextImage && (
+                        <AccessibleButton
+                            className="mx_ImageView_nav mx_ImageView_nav_next"
+                            title={_t("action|next")}
+                            onClick={this.onNextImage}
+                            onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
+                        >
+                            <ChevronRightIcon />
+                        </AccessibleButton>
+                    )}
                 </div>
             </FocusLock>
         );
