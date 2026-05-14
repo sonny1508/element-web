@@ -301,9 +301,10 @@ export default async function createRoom(client: MatrixClient, opts: IOpts): Pro
         // Determine if the room will be public based on the join rule or preset
         const isPublicRoom = opts.joinRule === JoinRule.Public || createOpts.preset === Preset.PublicChat;
 
-        // For DMs and non-public rooms, set history visibility to "invited"
+        // For DMs and non-public rooms, set history visibility to "shared"
+        // so that joined members can read the full room history
         if (opts.dmUserId || !isPublicRoom) {
-            historyVisibility = HistoryVisibility.Invited;
+            historyVisibility = HistoryVisibility.Shared;
         }
     }
 
