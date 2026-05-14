@@ -37,6 +37,7 @@ import { HiddenMediaPlaceholder } from "./HiddenMediaPlaceholder";
 import { useMediaVisible } from "../../../hooks/useMediaVisible";
 import { isMimeTypeAllowed } from "../../../utils/blobs.ts";
 import { FileBodyFactory, renderMBody } from "./MBodyFactory";
+import { type GalleryImage } from "../elements/ImageView";
 
 enum Placeholder {
     NoImage,
@@ -138,9 +139,73 @@ export class MImageBodyInner extends React.Component<IProps, IState> {
                 };
             }
 
+            const galleryImages = this.buildGalleryImages(httpUrl);
+            if (galleryImages) {
+                params.images = galleryImages.images;
+                params.initialIndex = galleryImages.initialIndex;
+            }
+
             Modal.createDialog(ImageView, params, "mx_Dialog_lightbox", undefined, true);
         }
     };
+
+    private buildGalleryImages(currentHttpUrl: string): { images: GalleryImage[]; initialIndex: number } | null {
+        const roomId = this.props.mxEvent.getRoomId();
+        const sender = this.props.mxEvent.getSender();
+        const myEventId = this.props.mxEvent.getId();
+        if (!roomId || !sender || !myEventId) return null;
+
+        const client = MatrixClientPeg.get();
+        const room = client?.getRoom(roomId);
+        if (!room) return null;
+
+        const myThreadRootId = this.props.mxEvent.threadRootId;
+
+        let timelineSet;
+        if (myThreadRootId) {
+            const thread = room.getThread(myThreadRootId);
+            if (!thread) return null;
+            timelineSet = thread.getUnfilteredTimelineSet();
+        } else {
+            timelineSet = room.getUnfilteredTimelineSet();
+        }
+
+        const allEvents = timelineSet.getTimelines().flatMap((t) => t.getEvents());
+
+        const imageEvents = allEvents.filter(
+            (ev) =>
+                ev.getType() === "m.room.message" &&
+                ev.getSender() === sender &&
+                ev.getContent()?.msgtype === "m.image",
+        );
+
+        if (imageEvents.length < 2) return null;
+
+        const images: GalleryImage[] = [];
+        let initialIndex = 0;
+
+        for (const evt of imageEvents) {
+            const evtContent = evt.getContent<ImageContent>();
+            const isCurrentEvent = evt.getId() === myEventId;
+            const media = mediaFromContent(evtContent);
+            const evtSrc = isCurrentEvent ? currentHttpUrl : media.srcHttp;
+            if (!evtSrc) continue;
+
+            if (isCurrentEvent) initialIndex = images.length;
+            images.push({
+                src: evtSrc,
+                name: evtContent.body || undefined,
+                width: evtContent.info?.w,
+                height: evtContent.info?.h,
+                fileSize: evtContent.info?.size,
+                mxEvent: evt,
+                permalinkCreator: this.props.permalinkCreator,
+            });
+        }
+
+        if (images.length < 2) return null;
+        return { images, initialIndex };
+    }
 
     private get shouldAutoplay(): boolean {
         return !(
