@@ -28,7 +28,7 @@ import SettingsStore from "./settings/SettingsStore";
 import ThemeWatcher from "./settings/watchers/ThemeWatcher";
 import { FontWatcher } from "./settings/watchers/FontWatcher";
 
-export const DEFAULT_THEME = "light";
+export const DEFAULT_THEME = "glenda-light";
 const HIGH_CONTRAST_THEMES: Record<string, string> = {
     light: "light-high-contrast",
 };

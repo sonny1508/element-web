@@ -133,15 +133,15 @@ export default class ThemeWatcher extends TypedEventEmitter<ThemeWatcherEvent, T
         if (theme.startsWith("custom-")) {
             return !!getCustomTheme(theme.substring("custom-".length)).is_dark;
         }
-        return theme === "dark" || theme === "dark-hc";
+        return theme === "dark" || theme === "dark-hc" || theme === "glenda-dark";
     }
 
     private themeBasedOnSystem(): string | undefined {
         let newTheme: string | undefined;
         if (this.preferDark.matches) {
-            newTheme = "dark";
+            newTheme = "glenda-dark";
         } else if (this.preferLight.matches) {
-            newTheme = "light";
+            newTheme = "glenda-light";
         }
         if (newTheme && this.preferHighContrast.matches) {
             const hcTheme = findHighContrastTheme(newTheme);
