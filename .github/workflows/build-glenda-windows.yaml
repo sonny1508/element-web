@@ -17,4 +17,24 @@ jobs:
       arch: x64
       sign: ''
       test: false
-      targets: msi
+      targets: squirrel msi
+
+  deploy-update-server:
+      needs: build-windows
+      runs-on: ubuntu-24.04
+      steps:
+        - name: Download artifacts
+          uses: actions/download-artifact@v4
+          with:
+            name: win-x64
+
+        - name: Prepare update server structure
+          run: |
+            mkdir -p update-server/win32/x64
+            mkdir -p update-server/install/win32/x64
+            # Squirrel update artifacts (what the running app polls)
+            mv dist/squirrel-windows*/*.nupkg update-server/win32/x64/
+            mv dist/squirrel-windows*/RELEASES  update-server/win32/x64/
+            # Installer for first-time installs (optional, nice to have hosted)
+            mv dist/squirrel-windows*/Element\ Setup*.exe update-server/install/win32/x64/
+            mv dist/*.msi update-server/install/win32/x64/
