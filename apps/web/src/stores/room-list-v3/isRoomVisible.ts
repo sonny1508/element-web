@@ -23,6 +23,9 @@ export function isRoomVisible(room?: Room): boolean {
     // local rooms shouldn't show up anywhere
     if (isLocalRoom(room)) return false;
 
+    // hide empty rooms — server cleans them up eventually
+    if (room.name === "Empty room" && room.getJoinedMemberCount() <= 1) return false;
+
     if (RoomListCustomisations.isRoomVisible) return RoomListCustomisations.isRoomVisible(room);
 
     return true; // default
