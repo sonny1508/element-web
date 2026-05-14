@@ -17,9 +17,6 @@
         "showDisplaynameChanges": false,
         "showAvatarChanges": false
     },
-    "roomCreationDefaults": {
-        "historyVisibility": "shared"
-    },
     "show_labs_settings": false,
     "features": {
         "feature_group_calls": false,

@@ -22,3 +22,12 @@ Rooms named "Empty room" with 0 members (or only the current user) are hidden fr
 
 - `apps/web/src/stores/room-list-v3/isRoomVisible.ts`
   - Added condition: `room.name === "Empty room" && room.getJoinedMemberCount() <= 1`
+
+## Default Room History Visibility: Shared
+
+Newly created rooms (DMs and non-public) default to `shared` history visibility instead of `invited`, so joined members can read the full room history.
+
+**Files changed:**
+
+- `apps/web/src/createRoom.ts`
+  - Changed default `HistoryVisibility.Invited` to `HistoryVisibility.Shared` for DMs and non-public rooms
