@@ -32,10 +32,8 @@ import { type RecheckThemePayload } from "../../../dispatcher/payloads/RecheckTh
 import { Action } from "../../../dispatcher/actions";
 import { useTheme } from "../../../hooks/useTheme";
 import {
-    findHighContrastTheme,
     getOrderedThemes,
     type CustomTheme as CustomThemeType,
-    type ITheme,
 } from "../../../theme";
 import { useSettingValue } from "../../../hooks/useSettings";
 
@@ -180,9 +178,6 @@ function useThemes(): Array<ITheme & { isDark: boolean }> {
         const builtInThemes = themes.filter((theme) => !customThemeMap.has(theme.name));
         const otherThemes = themes.filter((theme) => customThemeMap.has(theme.name));
 
-        const highContrastTheme = makeHighContrastTheme();
-        if (highContrastTheme) builtInThemes.push(highContrastTheme);
-
         const allThemes = builtInThemes.concat(otherThemes);
 
         // Check if the themes are dark
@@ -192,19 +187,6 @@ function useThemes(): Array<ITheme & { isDark: boolean }> {
             return { ...theme, isDark };
         });
     }, [customThemes]);
-}
-
-/**
- * Create the light high contrast theme
- */
-function makeHighContrastTheme(): ITheme | undefined {
-    const lightHighContrastId = findHighContrastTheme("light");
-    if (lightHighContrastId) {
-        return {
-            name: _t("settings|appearance|high_contrast"),
-            id: lightHighContrastId,
-        };
-    }
 }
 
 interface CustomThemeProps {

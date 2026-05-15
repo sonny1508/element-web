@@ -29,9 +29,7 @@ import ThemeWatcher from "./settings/watchers/ThemeWatcher";
 import { FontWatcher } from "./settings/watchers/FontWatcher";
 
 export const DEFAULT_THEME = "glenda-light";
-const HIGH_CONTRAST_THEMES: Record<string, string> = {
-    light: "light-high-contrast",
-};
+const HIGH_CONTRAST_THEMES: Record<string, string> = {};
 
 interface IFontFaces extends Omit<Record<(typeof allowedFontFaceProps)[number], string>, "src"> {
     src: {
@@ -367,11 +365,7 @@ export async function setTheme(theme?: string): Promise<void> {
      */
     document.body.classList.remove("cpd-theme-light", "cpd-theme-dark", "cpd-theme-light-hc", "cpd-theme-dark-hc");
 
-    let compoundThemeClassName = `cpd-theme-` + (stylesheetName.includes("light") ? "light" : "dark");
-    // Always respect user OS preference!
-    if (isHighContrastTheme(theme) || window.matchMedia("(prefers-contrast: more)").matches) {
-        compoundThemeClassName += "-hc";
-    }
+    const compoundThemeClassName = `cpd-theme-` + (stylesheetName.includes("light") ? "light" : "dark");
 
     document.body.classList.add(compoundThemeClassName);
 

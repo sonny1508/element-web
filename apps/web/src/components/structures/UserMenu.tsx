@@ -32,7 +32,6 @@ import FeedbackDialog from "../views/dialogs/FeedbackDialog";
 import Modal from "../../Modal";
 import LogoutDialog, { shouldShowLogoutDialog } from "../views/dialogs/LogoutDialog";
 import SettingsStore from "../../settings/SettingsStore";
-import { findHighContrastTheme, isHighContrastTheme } from "../../theme";
 import { useRovingTabIndex } from "../../accessibility/RovingTabIndex";
 import AccessibleButton, { type ButtonEvent } from "../views/elements/AccessibleButton";
 import SdkConfig from "../../SdkConfig";
@@ -87,10 +86,10 @@ const below = (rect: PartialDOMRect): MenuProps => {
 const ThemeSwitchButton = (): JSX.Element => {
     const [onFocus, isActive, ref] = useRovingTabIndex();
     const themeWatcher = useMemo(() => new ThemeWatcher(), []);
-    const [isHighContrast, isDark] = useTypedEventEmitterState(
+    const isDark = useTypedEventEmitterState(
         themeWatcher,
         ThemeWatcherEvent.Change,
-        (theme: string) => [isHighContrastTheme(theme), themeWatcher.isUserOnDarkTheme()],
+        () => themeWatcher.isUserOnDarkTheme(),
     );
 
     const onSwitchThemeClick = (ev: ButtonEvent): void => {
@@ -102,13 +101,7 @@ const ThemeSwitchButton = (): JSX.Element => {
         // Disable system theme matching if the user hits this button
         SettingsStore.setValue("use_system_theme", null, SettingLevel.DEVICE, false);
 
-        let newTheme = isDark ? "glenda-light" : "glenda-dark"; // modified
-        if (isHighContrast) {
-            const hcTheme = findHighContrastTheme(newTheme);
-            if (hcTheme) {
-                newTheme = hcTheme;
-            }
-        }
+        const newTheme = isDark ? "glenda-light" : "glenda-dark";
         SettingsStore.setValue("theme", null, SettingLevel.DEVICE, newTheme); // set at same level as Appearance tab
         themeWatcher.recheck(newTheme);
     };
