@@ -11,7 +11,7 @@ defaults:
 
 jobs:
   prepare:
-    uses: ./.github/workflows/build-glenda-prepare.yaml
+    uses: ./.github/workflows/build_glenda_prepare.yaml
 
   build-windows:
     needs: prepare
