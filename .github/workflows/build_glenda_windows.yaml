@@ -1,0 +1,93 @@
+name: Build Glenda Desktop Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [release-v1.12.15-dev]
+
+defaults:
+  run:
+    shell: powershell
+
+jobs:
+  prepare:
+    uses: ./.github/workflows/build-glenda-prepare.yaml
+
+  build-windows:
+    needs: prepare
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # No repository override — uses YOUR fork by default
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: webapp
+          path: apps/desktop/
+
+      - name: Cache .hak
+        id: cache
+        uses: actions/cache@v5
+        with:
+          key: ${{ runner.os }}-x64-${{ hashFiles('apps/desktop/hakHash', 'apps/desktop/electronVersion') }}
+          path: apps/desktop/.hak
+
+      - name: Choco install tclsh
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          choco install -y magicsplat-tcl-tk --no-progress
+          echo "${HOME}/AppData/Local/Apps/Tcl86/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Choco install NetWide Assembler
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          choco install -y nasm --no-progress
+          echo "C:/Program Files/NASM" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Rust
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add x86_64-pc-windows-msvc
+        env:
+          TARGET: x86_64-pc-windows-msvc
+
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/desktop/.node-version
+          cache: pnpm
+
+      - name: Install Deps
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+
+      - name: Build Natives
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: apps/desktop
+        run: |
+          refreshenv
+          pnpm run build:native --target x86_64-pc-windows-msvc
+
+      - name: Build App
+        working-directory: apps/desktop
+        run: pnpm run build --publish never -w squirrel msi
+        shell: bash
+        env:
+          VARIANT_PATH: variant.json
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-x64
+          path: apps/desktop/dist
+          retention-days: 3
