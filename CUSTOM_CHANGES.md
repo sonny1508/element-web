@@ -38,7 +38,7 @@ Rooms named "Empty room" with 0 members (or only the current user) are hidden fr
 **Files changed:**
 
 - `apps/web/src/stores/room-list-v3/isRoomVisible.ts`
-  - Added condition: `room.name === "Empty room" && room.getJoinedMemberCount() <= 1`
+  - Added condition: hide rooms named "Empty room" with <= 1 member AND user is not currently joined
 
 ## Default Room History Visibility: Shared
 
@@ -48,3 +48,12 @@ Newly created rooms (DMs and non-public) default to `shared` history visibility 
 
 - `apps/web/src/createRoom.ts`
   - Changed default `HistoryVisibility.Invited` to `HistoryVisibility.Shared` for DMs and non-public rooms
+
+## Fix: Double Desktop Notifications on Forward/Reply
+
+Forwarded messages (using reply format) were missing `m.mentions` in the content. Without it, the server falls back to legacy push rules that scan the body text for user IDs — the reply fallback `> <@sender:server>` was being matched as a mention, triggering duplicate notifications.
+
+**Files changed:**
+
+- `apps/web/src/components/views/dialogs/ForwardDialog.tsx`
+  - Added empty `"m.mentions": {}` to `buildReplyForwardContent()` output to disable legacy push rules

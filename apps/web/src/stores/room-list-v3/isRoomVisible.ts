@@ -5,7 +5,7 @@
  * Please see LICENSE files in the repository root for full details.
  */
 
-import { type Room } from "matrix-js-sdk/src/matrix";
+import { type Room, KnownMembership } from "matrix-js-sdk/src/matrix";
 
 import { isLocalRoom } from "../../utils/localRoom/isLocalRoom";
 import { RoomListCustomisations } from "../../customisations/RoomList";
@@ -23,8 +23,12 @@ export function isRoomVisible(room?: Room): boolean {
     // local rooms shouldn't show up anywhere
     if (isLocalRoom(room)) return false;
 
-    // hide empty rooms — server cleans them up eventually
-    if (room.name === "Empty room" && room.getJoinedMemberCount() <= 1) return false;
+    // hide empty rooms the user isn't actively in — server cleans them up eventually
+    if (
+        room.name === "Empty room" &&
+        room.getJoinedMemberCount() <= 1 &&
+        room.getMyMembership() !== KnownMembership.Join
+    ) return false;
 
     if (RoomListCustomisations.isRoomVisible) return RoomListCustomisations.isRoomVisible(room);
 
