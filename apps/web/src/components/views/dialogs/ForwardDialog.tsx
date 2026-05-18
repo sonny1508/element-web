@@ -284,7 +284,8 @@ const buildReplyForwardContent = (
         msgtype: "m.text",
         body: fullBody,
         format: "org.matrix.custom.html",
-        formatted_body: replyHtml
+        formatted_body: replyHtml,
+        "m.mentions": {},
     };
 
     return { type: EventType.RoomMessage, content };
