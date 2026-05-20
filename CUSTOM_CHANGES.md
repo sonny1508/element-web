@@ -33,12 +33,12 @@ High contrast theme support removed entirely since only Glenda Light/Dark are av
 
 ## Hide Empty Rooms from Room List
 
-Rooms named "Empty room" with 0 members (or only the current user) are hidden from the sidebar.
+Rooms named "Empty room" with 0 or 1 joined members are unconditionally hidden from the sidebar, regardless of the client's cached membership state. This catches ghost rooms left behind by admin deletion or stale IndexedDB cache.
 
 **Files changed:**
 
 - `apps/web/src/stores/room-list-v3/isRoomVisible.ts`
-  - Added condition: hide rooms named "Empty room" with <= 1 member AND user is not currently joined
+  - Hide any room named "Empty room" with `getJoinedMemberCount() <= 1` (previously also required `getMyMembership() !== Join`, which failed for stale cached memberships)
 
 ## Default Room History Visibility: Shared
 
@@ -57,3 +57,12 @@ Forwarded messages (using reply format) were missing `m.mentions` in the content
 
 - `apps/web/src/components/views/dialogs/ForwardDialog.tsx`
   - Added empty `"m.mentions": {}` to `buildReplyForwardContent()` output to disable legacy push rules
+
+## Disable "People" in Spaces by Default
+
+The "People" section in space preferences is now hidden by default (users can still enable it per-space).
+
+**Files changed:**
+
+- `apps/web/src/settings/Settings.tsx`
+  - Changed `Spaces.showPeopleInSpace` default from `true` to `false`

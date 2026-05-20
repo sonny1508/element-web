@@ -23,12 +23,10 @@ export function isRoomVisible(room?: Room): boolean {
     // local rooms shouldn't show up anywhere
     if (isLocalRoom(room)) return false;
 
-    // hide empty rooms the user isn't actively in — server cleans them up eventually
-    if (
-        room.name === "Empty room" &&
-        room.getJoinedMemberCount() <= 1 &&
-        room.getMyMembership() !== KnownMembership.Join
-    ) return false;
+    // hide empty rooms — rooms named "Empty room" with no other members are
+    // ghost entries (stale cache, admin-deleted, etc.) and should never appear
+    // in the sidebar regardless of the client's cached membership state.
+    if (room.name === "Empty room" && room.getJoinedMemberCount() <= 1) return false;
 
     if (RoomListCustomisations.isRoomVisible) return RoomListCustomisations.isRoomVisible(room);
 
