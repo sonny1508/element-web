@@ -18,9 +18,5 @@
         "showAvatarChanges": false
     },
     "show_labs_settings": false,
-    "features": {
-        "feature_group_calls": false,
-        "feature_video_rooms": false
-    },
     "update_base_url": "https://update.glenda-studio-chat.com/"
 }
