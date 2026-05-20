@@ -66,3 +66,37 @@ The "People" section in space preferences is now hidden by default (users can st
 
 - `apps/web/src/settings/Settings.tsx`
   - Changed `Spaces.showPeopleInSpace` default from `true` to `false`
+
+## Media Captions (MSC2530)
+
+Upload dialog now shows an optional caption text input. When provided, the caption is sent as `body` with the real filename in `filename`, per the MSC2530 spec (stable since Matrix v1.10). Clients that understand captions (Element Web, Element X) render the image with the caption below it. Older clients show the caption text as the message body.
+
+**Files changed:**
+
+- `apps/web/src/components/views/dialogs/UploadConfirmDialog.tsx`
+  - Added `caption` state and text input below the media preview
+  - `onFinished` now passes `caption` as third argument
+  - Enter key in caption input triggers upload
+- `apps/web/src/ContentMessages.ts`
+  - `sendContentListToRoom`: receives caption from dialog, passes to `sendContentToRoom`
+  - `sendContentToRoom`: accepts optional `caption` param; when set, puts filename in `content.filename` and caption text in `content.body`
+- `apps/web/res/css/views/dialogs/_UploadConfirmDialog.pcss`
+  - Styling for `.mx_UploadConfirmDialog_caption` input
+
+## Image Gallery Grouping
+
+Consecutive `m.image` events from the same sender (within 30 seconds) are visually grouped into a Teams-style 2x2 grid in the timeline. Single images render normally. The gallery uses the existing `MImageGallery` component. If the last image in a group has a caption (MSC2530), it is displayed below the grid.
+
+**Files changed:**
+
+- `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx` *(new)*
+  - `BaseGrouper` subclass that groups consecutive same-sender `m.image` events
+  - Falls back to normal EventTile rendering for single images
+  - Renders `MImageGallery` grid for 2+ images, with optional caption
+- `apps/web/src/components/structures/MessagePanel.tsx`
+  - Imported `ImageGalleryGrouper`
+  - Added it to `groupers` array (highest priority)
+- `apps/web/src/components/views/messages/MImageGallery.tsx` *(previously unused)*
+  - Already existed but was not wired up — now integrated via the grouper
+- `apps/web/res/css/views/messages/_MImageGallery.pcss`
+  - Added `.mx_EventTile_gallery` and `.mx_EventTile_galleryCaption` styles

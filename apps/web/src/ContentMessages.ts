@@ -491,17 +491,19 @@ export default class ContentMessages {
             const file = okFiles[i];
             const loopPromiseBefore = promBefore;
 
+            let caption: string | undefined;
             if (!uploadAll) {
                 const { finished } = Modal.createDialog(UploadConfirmDialog, {
                     file,
                     currentIndex: i,
                     totalFiles: okFiles.length,
                 });
-                const [shouldContinue, shouldUploadAll] = await finished;
+                const [shouldContinue, shouldUploadAll, dialogCaption] = await finished;
                 if (!shouldContinue) break;
                 if (shouldUploadAll) {
                     uploadAll = true;
                 }
+                caption = dialogCaption;
             }
 
             promBefore = doMaybeLocalRoomAction(
@@ -514,6 +516,7 @@ export default class ContentMessages {
                         matrixClient,
                         replyToEvent ?? undefined,
                         loopPromiseBefore,
+                        caption,
                     ),
                 matrixClient,
             );
@@ -560,6 +563,7 @@ export default class ContentMessages {
         matrixClient: MatrixClient,
         replyToEvent: MatrixEvent | undefined,
         promBefore?: Promise<any>,
+        caption?: string,
     ): Promise<void> {
         const fileName = file.name || _t("common|attachment");
         const content: Omit<MediaEventContent, "info"> & { info: Partial<MediaEventInfo> } = {
@@ -569,6 +573,15 @@ export default class ContentMessages {
             },
             msgtype: MsgType.File, // set more specifically later
         };
+
+        // MSC2530: if a caption is provided, set `filename` to the real file name
+        // and `body` to the caption text. Clients that understand captions will
+        // display the image with the caption; older clients show the caption as
+        // the message body (graceful fallback).
+        if (caption) {
+            (content as Record<string, unknown>).filename = fileName;
+            content.body = caption;
+        }
 
         // Attach mentions, which really only applies if there's a replyToEvent.
         attachMentions(matrixClient.getSafeUserId(), content, null, replyToEvent);

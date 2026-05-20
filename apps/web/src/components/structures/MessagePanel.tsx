@@ -55,6 +55,7 @@ import { hasThreadSummary } from "../../utils/EventUtils";
 import { type BaseGrouper } from "./grouper/BaseGrouper";
 import { MainGrouper } from "./grouper/MainGrouper";
 import { CreationGrouper } from "./grouper/CreationGrouper";
+import { ImageGalleryGrouper } from "./grouper/ImageGalleryGrouper";
 import { _t } from "../../languageHandler";
 import { getLateEventInfo } from "./grouper/LateEventGrouper";
 import { DateSeparatorViewModel } from "../../viewmodels/room/timeline/DateSeparatorViewModel";
@@ -1109,7 +1110,7 @@ export interface WrappedEvent {
 }
 
 // all the grouper classes that we use, ordered by priority
-const groupers = [CreationGrouper, MainGrouper];
+const groupers = [ImageGalleryGrouper, CreationGrouper, MainGrouper];
 
 /**
  * Look through the supplied list of WrappedEvent, and return the first
