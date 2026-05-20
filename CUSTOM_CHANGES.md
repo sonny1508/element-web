@@ -1,6 +1,6 @@
 # Custom Changes (Glenda Studio Fork)
 
-Changes made on top of Element Web v1.12.15. Reference this when migrating to a newer upstream version.
+Changes made on top of Element Web v1.12.1x. Reference this when migrating to a newer upstream version.
 
 ## Theme: Glenda Light / Glenda Dark
 
