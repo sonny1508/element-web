@@ -3,7 +3,7 @@ name: Build Glenda Desktop Windows
 on:
   workflow_dispatch:
   push:
-    branches: [release-v1.12.15-dev]
+    branches: [release-v1.12.18-dev]
 
 defaults:
   run:
