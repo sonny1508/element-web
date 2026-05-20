@@ -8,17 +8,9 @@
     "default_theme": "glenda-dark",
     "setting_defaults": {
         "breadcrumbs": false,
-        "feature_share_history_on_invite": true,
         "layout": "bubble",
-        "Electron.autoLaunch": "enabled",
         "RoomList.showMessagePreview": true,
-        "alwaysShowTimestamps": true,
-        "showJoinLeaves": false,
-        "showDisplaynameChanges": false,
-        "showAvatarChanges": false
-    },
-    "roomCreationDefaults": {
-        "historyVisibility": "shared"
+        "alwaysShowTimestamps": true
     },
     "show_labs_settings": false,
     "features": {
