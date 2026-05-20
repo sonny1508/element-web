@@ -2,14 +2,20 @@
  * ImageGalleryGrouper.tsx
  *
  * Groups consecutive m.image events from the same sender into an
- * MImageGallery grid. Only triggers when there are 2+ consecutive images.
- * Single images render normally via EventTile.
+ * MImageGallery grid with a bubble wrapper. Single images also get
+ * the bubble treatment. Includes hover highlight and right-click
+ * context menu support.
  *
  * Custom addition for the Glenda Studio fork.
  */
 
-import React, { type ReactNode } from "react";
+import React, { type ReactNode, useState, useCallback, useContext } from "react";
 import { EventType, MsgType, type MatrixEvent } from "matrix-js-sdk/src/matrix";
+import {
+    ReplyIcon,
+    ThreadsIcon,
+    OverflowHorizontalIcon,
+} from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import type MessagePanel from "../MessagePanel";
 import { type WrappedEvent } from "../MessagePanel";
@@ -17,6 +23,14 @@ import { BaseGrouper } from "./BaseGrouper";
 import MImageGallery from "../../views/messages/MImageGallery";
 import MImageBody from "../../views/messages/MImageBody";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
+import MessageContextMenu from "../../views/context_menus/MessageContextMenu";
+import { aboveRightOf } from "../ContextMenu";
+import { type RoomPermalinkCreator } from "../../../utils/permalinks/Permalinks";
+import { type Layout } from "../../../settings/enums/Layout";
+import defaultDispatcher from "../../../dispatcher/dispatcher";
+import { Action } from "../../../dispatcher/actions";
+import { type ShowThreadPayload } from "../../../dispatcher/payloads/ShowThreadPayload";
+import RoomContext from "../../../contexts/RoomContext";
 
 /**
  * Returns true if the event is an m.room.message with msgtype m.image.
@@ -29,18 +43,156 @@ function isImageMessage(ev: MatrixEvent): boolean {
 
 /**
  * Max time gap (ms) between consecutive images to still group them.
- * When uploading multiple images at once, they arrive sequentially
- * within a few seconds of each other. 10s is generous enough to
- * cover slow uploads while still separating distinct send actions.
  */
 const MAX_GAP_MS = 10_000; // 10 seconds
 
+// -------------------------------------------------------------------------
+// GalleryTile — lightweight wrapper providing hover + context menu
+// -------------------------------------------------------------------------
+
+interface GalleryTileProps {
+    eventId: string;
+    /** The "representative" event used for the context menu (first in group). */
+    mxEvent: MatrixEvent;
+    layout: Layout | undefined;
+    isOwnEvent: boolean;
+    permalinkCreator?: RoomPermalinkCreator;
+    children: ReactNode;
+}
+
+// -------------------------------------------------------------------------
+// GalleryActionBar — lightweight hover toolbar (Reply · Thread · Options)
+// -------------------------------------------------------------------------
+
+interface GalleryActionBarProps {
+    mxEvent: MatrixEvent;
+    permalinkCreator?: RoomPermalinkCreator;
+    onOptionsClick: (ev: React.MouseEvent) => void;
+}
+
+function GalleryActionBar({ mxEvent, onOptionsClick }: GalleryActionBarProps): ReactNode {
+    const roomContext = useContext(RoomContext);
+
+    const onReply = useCallback(
+        (ev: React.MouseEvent) => {
+            ev.stopPropagation();
+            defaultDispatcher.dispatch({
+                action: "reply_to_event",
+                event: mxEvent,
+                context: roomContext.timelineRenderingType,
+            });
+        },
+        [mxEvent, roomContext.timelineRenderingType],
+    );
+
+    const onThread = useCallback(
+        (ev: React.MouseEvent) => {
+            ev.stopPropagation();
+            const thread = mxEvent.getThread();
+            if (thread?.rootEvent && !mxEvent.isThreadRoot) {
+                defaultDispatcher.dispatch<ShowThreadPayload>({
+                    action: Action.ShowThread,
+                    rootEvent: thread.rootEvent,
+                    initialEvent: mxEvent,
+                    scroll_into_view: true,
+                    highlighted: true,
+                    push: false,
+                });
+            } else {
+                defaultDispatcher.dispatch<ShowThreadPayload>({
+                    action: Action.ShowThread,
+                    rootEvent: mxEvent,
+                    push: false,
+                });
+            }
+        },
+        [mxEvent],
+    );
+
+    return (
+        <div className="mx_GalleryActionBar" role="toolbar" aria-label="Message actions">
+            <button className="mx_GalleryActionBar_button" onClick={onReply} title="Reply">
+                <ReplyIcon width={18} height={18} />
+            </button>
+            <button className="mx_GalleryActionBar_button" onClick={onThread} title="Thread">
+                <ThreadsIcon width={18} height={18} />
+            </button>
+            <button className="mx_GalleryActionBar_button" onClick={onOptionsClick} title="Options">
+                <OverflowHorizontalIcon width={18} height={18} />
+            </button>
+        </div>
+    );
+}
+
+// -------------------------------------------------------------------------
+// GalleryTile — wrapper providing hover highlight, action bar & context menu
+// -------------------------------------------------------------------------
+
+function GalleryTile({ eventId, mxEvent, layout, isOwnEvent, permalinkCreator, children }: GalleryTileProps): ReactNode {
+    const [hover, setHover] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ left: number; top: number; bottom: number } | null>(null);
+
+    const onContextMenu = useCallback(
+        (ev: React.MouseEvent) => {
+            // Let native context menu handle images (for "Copy image" etc.)
+            if (ev.target instanceof HTMLImageElement) return;
+
+            ev.preventDefault();
+            ev.stopPropagation();
+            setContextMenu({ left: ev.clientX, top: ev.clientY, bottom: ev.clientY });
+        },
+        [],
+    );
+
+    const onOptionsClick = useCallback(
+        (ev: React.MouseEvent) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+            setContextMenu({ left: rect.left, top: rect.bottom, bottom: rect.bottom });
+        },
+        [],
+    );
+
+    const onCloseMenu = useCallback(() => setContextMenu(null), []);
+
+    return (
+        <li
+            className="mx_EventTile mx_EventTile_gallery"
+            data-scroll-tokens={eventId}
+            data-layout={layout}
+            data-self={isOwnEvent}
+            onContextMenu={onContextMenu}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+        >
+            {children}
+            {/* Action bar rendered inside the <li> but positioned via CSS */}
+            {(hover || contextMenu) && (
+                <GalleryActionBar
+                    mxEvent={mxEvent}
+                    permalinkCreator={permalinkCreator}
+                    onOptionsClick={onOptionsClick}
+                />
+            )}
+            {contextMenu && (
+                <MessageContextMenu
+                    {...aboveRightOf(contextMenu)}
+                    mxEvent={mxEvent}
+                    permalinkCreator={permalinkCreator}
+                    onFinished={onCloseMenu}
+                    rightClick={true}
+                />
+            )}
+        </li>
+    );
+}
+
+// -------------------------------------------------------------------------
+// Grouper
+// -------------------------------------------------------------------------
+
 export class ImageGalleryGrouper extends BaseGrouper {
-    /**
-     * Start a gallery group when we see a visible m.image event.
-     * The group may later be discarded (rendered as normal tiles) if only
-     * one image ends up in it — see getTiles().
-     */
     public static canStartGroup = (_panel: MessagePanel, { event: ev, shouldShow }: WrappedEvent): boolean => {
         if (!shouldShow) return false;
         return isImageMessage(ev);
@@ -62,11 +214,9 @@ export class ImageGalleryGrouper extends BaseGrouper {
         if (!shouldShow) return false;
         if (!isImageMessage(ev)) return false;
 
-        // Must be from the same sender
         const first = this.events[0].event;
         if (ev.getSender() !== first.getSender()) return false;
 
-        // Must be within the time gap
         const lastInGroup = this.events[this.events.length - 1].event;
         if (ev.getTs() - lastInGroup.getTs() > MAX_GAP_MS) return false;
 
@@ -81,13 +231,11 @@ export class ImageGalleryGrouper extends BaseGrouper {
         const imageEvents = this.events.map((we) => we.event);
         const firstEventId = imageEvents[0].getId()!;
 
-        // Bubble layout: match the data attributes that EventTile uses
-        // so the gallery aligns left (others) or right (self).
         const layout = this.panel.props.layout;
         const myUserId = MatrixClientPeg.safeGet().getUserId();
         const isOwnEvent = imageEvents[0].getSender() === myUserId;
 
-        // Find the caption from any image in the group (MSC2530: filename !== body).
+        // Find caption from any image (MSC2530: filename !== body)
         let captionText: string | undefined;
         for (const ev of imageEvents) {
             const c = ev.getContent();
@@ -97,7 +245,7 @@ export class ImageGalleryGrouper extends BaseGrouper {
             }
         }
 
-        // Build the inner content: single image or multi-image grid
+        // Single image or multi-image grid
         let mediaContent: ReactNode;
         if (this.events.length === 1) {
             mediaContent = (
@@ -115,12 +263,13 @@ export class ImageGalleryGrouper extends BaseGrouper {
         }
 
         return [
-            <li
+            <GalleryTile
                 key={`gallery-${firstEventId}`}
-                className="mx_EventTile mx_EventTile_gallery"
-                data-scroll-tokens={firstEventId}
-                data-layout={layout}
-                data-self={isOwnEvent}
+                eventId={firstEventId}
+                mxEvent={imageEvents[0]}
+                layout={layout}
+                isOwnEvent={isOwnEvent}
+                permalinkCreator={this.panel.props.permalinkCreator}
             >
                 <div className="mx_EventTile_gallery_bubble">
                     {mediaContent}
@@ -130,7 +279,7 @@ export class ImageGalleryGrouper extends BaseGrouper {
                         </div>
                     )}
                 </div>
-            </li>,
+            </GalleryTile>,
         ];
     }
 

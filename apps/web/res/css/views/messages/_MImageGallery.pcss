@@ -129,8 +129,31 @@
         max-width: 70%;
         margin-inline-start: var(--EventTile_bubble-margin-inline-start, 49px);
         margin-inline-end: var(--EventTile_bubble-margin-inline-end, 60px);
+        position: relative;
 
+        // Hover highlight — same visual as EventBubbleTile but without
+        // z-index: -1 which breaks inside overflow:hidden stacking contexts.
+        &::before {
+            content: "";
+            position: absolute;
+            top: -1px;
+            bottom: -1px;
+            left: calc(-1 * var(--EventTile_bubble-margin-inline-start, 49px));
+            right: calc(-1 * var(--EventTile_bubble-margin-inline-end, 60px));
+            border-radius: 4px;
+            pointer-events: none;
+        }
+
+        &:hover::before {
+            background: $eventbubble-bg-hover;
+            z-index: 0;
+        }
+
+        // Bubble must sit above the hover highlight.
+        // Also the positioning ancestor for .mx_GalleryActionBar.
         .mx_EventTile_gallery_bubble {
+            position: relative;
+            z-index: 1;
             background: $eventbubble-others-bg;
             border-radius: var(--cornerRadius);
             overflow: hidden;
@@ -219,4 +242,46 @@
     line-height: $font-20px;
     color: $primary-content;
     word-break: break-word;
+}
+
+// -------------------------------------------------------------------------
+// Gallery hover action bar (Reply · Thread · Options)
+// -------------------------------------------------------------------------
+
+.mx_GalleryActionBar {
+    position: absolute;
+    top: -32px;
+    right: 0;
+    z-index: 10;
+    display: inline-flex;
+    gap: 2px;
+    border-radius: 8px;
+    background: var(--cpd-color-bg-canvas-default);
+    border: 1px solid var(--cpd-color-border-disabled);
+    padding: 2px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.mx_GalleryActionBar_button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--cpd-color-icon-secondary);
+    cursor: pointer;
+
+    &:hover {
+        background: var(--cpd-color-bg-subtle-secondary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--cpd-color-border-focused, #0dbd8b);
+        outline-offset: -2px;
+    }
 }
