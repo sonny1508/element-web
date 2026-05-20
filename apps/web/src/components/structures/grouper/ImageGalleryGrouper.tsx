@@ -15,6 +15,8 @@ import type MessagePanel from "../MessagePanel";
 import { type WrappedEvent } from "../MessagePanel";
 import { BaseGrouper } from "./BaseGrouper";
 import MImageGallery from "../../views/messages/MImageGallery";
+import MImageBody from "../../views/messages/MImageBody";
+import { MatrixClientPeg } from "../../../MatrixClientPeg";
 
 /**
  * Returns true if the event is an m.room.message with msgtype m.image.
@@ -25,8 +27,13 @@ function isImageMessage(ev: MatrixEvent): boolean {
     return content.msgtype === MsgType.Image;
 }
 
-/** Max time gap (ms) between consecutive images to still group them. */
-const MAX_GAP_MS = 30_000; // 30 seconds
+/**
+ * Max time gap (ms) between consecutive images to still group them.
+ * When uploading multiple images at once, they arrive sequentially
+ * within a few seconds of each other. 10s is generous enough to
+ * cover slow uploads while still separating distinct send actions.
+ */
+const MAX_GAP_MS = 10_000; // 10 seconds
 
 export class ImageGalleryGrouper extends BaseGrouper {
     /**
@@ -71,41 +78,58 @@ export class ImageGalleryGrouper extends BaseGrouper {
     }
 
     public getTiles(): ReactNode[] {
-        // If only one image ended up in the group, fall back to normal
-        // EventTile rendering — no gallery wrapper needed.
-        if (this.events.length < 2) {
-            const tiles: ReactNode[] = [];
-            for (const wrappedEvent of this.events) {
-                tiles.push(
-                    ...this.panel.getTilesForEvent(
-                        this.prevEvent,
-                        wrappedEvent,
-                        wrappedEvent.event === this.lastShownEvent,
-                    ),
-                );
-            }
-            return tiles;
-        }
-
         const imageEvents = this.events.map((we) => we.event);
         const firstEventId = imageEvents[0].getId()!;
-        const lastEvent = imageEvents[imageEvents.length - 1];
 
-        // Check if the last image has a caption (MSC2530: filename !== body)
-        const lastContent = lastEvent.getContent();
-        const hasCaption = lastContent.filename && lastContent.filename !== lastContent.body;
+        // Bubble layout: match the data attributes that EventTile uses
+        // so the gallery aligns left (others) or right (self).
+        const layout = this.panel.props.layout;
+        const myUserId = MatrixClientPeg.safeGet().getUserId();
+        const isOwnEvent = imageEvents[0].getSender() === myUserId;
 
-        return [
-            <li key={`gallery-${firstEventId}`} className="mx_EventTile mx_EventTile_gallery" data-scroll-tokens={firstEventId}>
+        // Find the caption from any image in the group (MSC2530: filename !== body).
+        let captionText: string | undefined;
+        for (const ev of imageEvents) {
+            const c = ev.getContent();
+            if (c.filename && c.filename !== c.body) {
+                captionText = c.body;
+                break;
+            }
+        }
+
+        // Build the inner content: single image or multi-image grid
+        let mediaContent: ReactNode;
+        if (this.events.length === 1) {
+            mediaContent = (
+                <div className="mx_MImageBody_single">
+                    <MImageBody mxEvent={imageEvents[0]} />
+                </div>
+            );
+        } else {
+            mediaContent = (
                 <MImageGallery
                     events={imageEvents}
                     onHeightChanged={() => this.panel.forceUpdate()}
                 />
-                {hasCaption && (
-                    <div className="mx_EventTile_galleryCaption">
-                        {lastContent.body}
-                    </div>
-                )}
+            );
+        }
+
+        return [
+            <li
+                key={`gallery-${firstEventId}`}
+                className="mx_EventTile mx_EventTile_gallery"
+                data-scroll-tokens={firstEventId}
+                data-layout={layout}
+                data-self={isOwnEvent}
+            >
+                <div className="mx_EventTile_gallery_bubble">
+                    {mediaContent}
+                    {captionText && (
+                        <div className="mx_EventTile_galleryCaption">
+                            {captionText}
+                        </div>
+                    )}
+                </div>
             </li>,
         ];
     }

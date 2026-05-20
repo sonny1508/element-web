@@ -1,21 +1,12 @@
 /*
- * _MImageGallery.scss
+ * _MImageGallery.pcss
  *
- * Drop at:
- *   res/css/views/messages/_MImageGallery.scss
- *
- * Then import it in res/css/views/messages/_index.scss (or wherever your
- * message-body partials are imported) by adding:
- *
- *   @import "./_MImageGallery";
+ * Styles for the image gallery grid and the bubble wrapper used
+ * by ImageGalleryGrouper (both single images and multi-image grids).
  */
 
 // The gallery sits inside a normal EventTile content area.
-// We constrain its width to match the typical MImageBody max-width so it
-// doesn't expand to fill the full timeline width.
 .mx_MImageGallery {
-    // Match the maximum width element-web uses for image thumbnails.
-    // Adjust if your theme differs.
     max-width: 324px;
     width: 100%;
 }
@@ -31,16 +22,12 @@
     gap: 2px;
     border-radius: 8px;
     overflow: hidden;
-    // Maintain a square overall bounding box so images look consistent.
-    // Change this aspect-ratio if you prefer rectangular albums.
-    aspect-ratio: 1 / 1;
 
-    // Expanded mode: let rows grow naturally, remove the square constraint.
+    // Expanded mode: let rows grow naturally.
     &--expanded {
         grid-template-rows: unset;
         grid-auto-rows: 1fr;
-        aspect-ratio: unset;
-        // Each expanded cell is also square on its own.
+
         .mx_MImageGallery_cell {
             aspect-ratio: 1 / 1;
         }
@@ -54,13 +41,11 @@
 .mx_MImageGallery_cell {
     position: relative;
     overflow: hidden;
-    // Cells fill their grid area completely.
     min-width: 0;
     min-height: 0;
+    // Each cell is square so the grid has consistent proportions
+    aspect-ratio: 1 / 1;
 
-    // Override MImageBody's own sizing so the image fills the cell.
-    // MImageBody sets max-width/max-height via inline styles on its container;
-    // we need to neutralise those here so the cell controls the dimensions.
     .mx_MImageBody {
         width: 100%;
         height: 100%;
@@ -69,7 +54,6 @@
     }
 
     .mx_MImageBody_thumbnail_container {
-        // Override the inline max-width/max-height MImageBody injects.
         max-width: 100% !important;
         max-height: 100% !important;
         width: 100% !important;
@@ -81,13 +65,11 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        // Prevent the img from having its own size constraints.
         max-width: unset;
         max-height: unset;
         display: block;
     }
 
-    // The wrapping <a> tag inside MImageBody also needs to fill the cell.
     > .mx_MImageBody > a {
         display: block;
         width: 100%;
@@ -100,21 +82,16 @@
 // -------------------------------------------------------------------------
 
 .mx_MImageGallery_overflow {
-    // Stretch over the entire cell.
     position: absolute;
     inset: 0;
-    // Semi-transparent dark scrim.
     background: rgba(0, 0, 0, 0.55);
-    // Reset button defaults.
     border: none;
     padding: 0;
     margin: 0;
     cursor: pointer;
-    // Center the label.
     display: flex;
     align-items: center;
     justify-content: center;
-    // Typography.
     color: #ffffff;
     font-size: 1.75rem;
     font-weight: 700;
@@ -131,19 +108,113 @@
 }
 
 // -------------------------------------------------------------------------
-// Gallery wrapper inside EventTile
+// Gallery EventTile wrapper
 // -------------------------------------------------------------------------
 
 .mx_EventTile_gallery {
-    // Give gallery tiles some breathing room matching normal EventTile padding.
-    padding-left: 64px;
-    padding-right: 8px;
     margin-top: 4px;
     margin-bottom: 4px;
+
+    // Group (default) layout
+    &[data-layout="group"] {
+        padding-left: 64px;
+        padding-right: 8px;
+    }
+
+    // Bubble layout
+    &[data-layout="bubble"] {
+        --cornerRadius: 12px;
+        --gutterSize: 11px;
+
+        max-width: 70%;
+        margin-inline-start: var(--EventTile_bubble-margin-inline-start, 49px);
+        margin-inline-end: var(--EventTile_bubble-margin-inline-end, 60px);
+
+        .mx_EventTile_gallery_bubble {
+            background: $eventbubble-others-bg;
+            border-radius: var(--cornerRadius);
+            overflow: hidden;
+            // Padding between images and bubble border
+            padding: var(--gutterSize);
+
+            .mx_MImageGallery {
+                max-width: 100%;
+            }
+
+            // The bubble border-radius clips corners; strip the grid's own
+            .mx_MImageGallery_grid {
+                border-radius: 0;
+            }
+
+            // Single image: neutralise MImageBody inline sizing so it
+            // respects the bubble width instead of inflating it.
+            .mx_MImageBody_single {
+                .mx_MImageBody_thumbnail_container {
+                    max-width: 100% !important;
+                    max-height: 100% !important;
+                    aspect-ratio: unset !important;
+                }
+
+                .mx_MImageBody_thumbnail {
+                    width: 100%;
+                    height: auto;
+                    object-fit: contain;
+                    max-width: 100%;
+                    max-height: unset;
+                    display: block;
+                }
+            }
+
+            // Multi-image grid: cells handle their own sizing via
+            // aspect-ratio on .mx_MImageGallery_cell, so just
+            // kill inline sizes on MImageBody within cells.
+            .mx_MImageGallery_cell {
+                .mx_MImageBody,
+                .mx_MImageBody > a {
+                    margin: 0;
+                    padding: 0;
+                    max-width: unset !important;
+                    max-height: unset !important;
+                    height: 100%;
+                    width: 100%;
+                }
+
+                .mx_MImageBody_thumbnail_container {
+                    max-width: 100% !important;
+                    max-height: 100% !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                    aspect-ratio: unset !important;
+                }
+            }
+
+            // Caption: separated from images above
+            .mx_EventTile_galleryCaption {
+                padding-top: var(--gutterSize);
+            }
+        }
+
+        // Own messages: right-aligned + self background
+        &[data-self="true"] {
+            margin-inline-start: auto;
+
+            .mx_EventTile_gallery_bubble {
+                background: $eventbubble-self-bg;
+            }
+
+            .mx_EventTile_galleryCaption {
+                text-align: right;
+            }
+        }
+
+        // Others' messages: left-aligned
+        &[data-self="false"] {
+            margin-inline-end: auto;
+        }
+    }
 }
 
 .mx_EventTile_galleryCaption {
-    margin-top: 4px;
     font-size: $font-14px;
     line-height: $font-20px;
     color: $primary-content;
