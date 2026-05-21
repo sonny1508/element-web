@@ -71,6 +71,8 @@ The "People" section in space preferences is now hidden by default (users can st
 
 Upload dialog now shows an optional caption text input. When provided, the caption is sent as `body` with the real filename in `filename`, per the MSC2530 spec (stable since Matrix v1.10). Clients that understand captions (Element Web, Element X) render the image with the caption below it. Older clients show the caption text as the message body.
 
+See `customizations/MEDIA_CAPTIONS.md` for full implementation documentation.
+
 **Files changed:**
 
 - `apps/web/src/components/views/dialogs/UploadConfirmDialog.tsx`
@@ -81,22 +83,31 @@ Upload dialog now shows an optional caption text input. When provided, the capti
   - `sendContentListToRoom`: receives caption from dialog, passes to `sendContentToRoom`
   - `sendContentToRoom`: accepts optional `caption` param; when set, puts filename in `content.filename` and caption text in `content.body`
 - `apps/web/res/css/views/dialogs/_UploadConfirmDialog.pcss`
-  - Styling for `.mx_UploadConfirmDialog_caption` input
+  - Styling for `input.mx_UploadConfirmDialog_caption` (uses `input.class` selector for specificity)
 
 ## Image Gallery Grouping
 
-Consecutive `m.image` events from the same sender (within 30 seconds) are visually grouped into a Teams-style 2x2 grid in the timeline. Single images render normally. The gallery uses the existing `MImageGallery` component. If the last image in a group has a caption (MSC2530), it is displayed below the grid.
+Consecutive `m.image` events from the same sender (within 10 seconds) are visually grouped into a Teams-style 2x2 grid in the timeline. Single images also get the bubble wrapper treatment. The gallery uses the existing `MImageGallery` component. If any image in a group has a caption (MSC2530), it is displayed below the grid. Includes bubble layout support (left/right alignment, bubble background), hover highlight, hover action bar (Reply, Thread, Options), and right-click context menu.
+
+See `customizations/IMAGE_GALLERY_GROUPING.md` for full architecture documentation.
 
 **Files changed:**
 
 - `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx` *(new)*
   - `BaseGrouper` subclass that groups consecutive same-sender `m.image` events
-  - Falls back to normal EventTile rendering for single images
-  - Renders `MImageGallery` grid for 2+ images, with optional caption
+  - `GalleryTile` wrapper component: `<li>` with hover state, context menu, and action bar
+  - `GalleryActionBar` component: Reply/Thread/Options buttons on hover (uses `defaultDispatcher` for Reply and Thread, `MessageContextMenu` for Options)
+  - Renders `MImageBody` (single image) or `MImageGallery` grid (2+ images), both inside a `.mx_EventTile_gallery_bubble` wrapper
+  - Scans all images for caption (not just last) to handle "Upload All" case
 - `apps/web/src/components/structures/MessagePanel.tsx`
   - Imported `ImageGalleryGrouper`
-  - Added it to `groupers` array (highest priority)
+  - Added it to `groupers` array (highest priority, index 0)
 - `apps/web/src/components/views/messages/MImageGallery.tsx` *(previously unused)*
   - Already existed but was not wired up — now integrated via the grouper
 - `apps/web/res/css/views/messages/_MImageGallery.pcss`
-  - Added `.mx_EventTile_gallery` and `.mx_EventTile_galleryCaption` styles
+  - `.mx_EventTile_gallery` — tile wrapper with group/bubble layout variants
+  - `.mx_EventTile_gallery_bubble` — bubble background, padding, border-radius, z-index layering
+  - `.mx_EventTile_galleryCaption` — caption text styling
+  - `.mx_GalleryActionBar` / `.mx_GalleryActionBar_button` — hover toolbar styling
+  - Hover highlight uses `z-index: 0` (not `-1`) to avoid disappearing in thread panel stacking contexts
+  - MImageBody inline sizing overrides (`!important`) for both single images and grid cells
