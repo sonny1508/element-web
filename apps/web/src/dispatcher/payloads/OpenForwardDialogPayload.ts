@@ -16,5 +16,7 @@ export interface OpenForwardDialogPayload extends ActionPayload {
     action: Action.OpenForwardDialog;
 
     event: MatrixEvent;
+    /** Additional events to forward together (e.g. gallery images). */
+    extraEvents?: MatrixEvent[];
     permalinkCreator: RoomPermalinkCreator | null;
 }

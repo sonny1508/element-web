@@ -99,6 +99,7 @@ See `customizations/IMAGE_GALLERY_GROUPING.md` for full architecture documentati
   - `GalleryActionBar` component: Reply/Thread/Options buttons on hover (uses `defaultDispatcher` for Reply and Thread, `MessageContextMenu` for Options)
   - Renders `MImageBody` (single image) or `MImageGallery` grid (2+ images), both inside a `.mx_EventTile_gallery_bubble` wrapper
   - Scans all images for caption (not just last) to handle "Upload All" case
+  - Passes `galleryEvents` to `MessageContextMenu` so the Forward action can send all images
 - `apps/web/src/components/structures/MessagePanel.tsx`
   - Imported `ImageGalleryGrouper`
   - Added it to `groupers` array (highest priority, index 0)
@@ -111,3 +112,34 @@ See `customizations/IMAGE_GALLERY_GROUPING.md` for full architecture documentati
   - `.mx_GalleryActionBar` / `.mx_GalleryActionBar_button` — hover toolbar styling
   - Hover highlight uses `z-index: 0` (not `-1`) to avoid disappearing in thread panel stacking contexts
   - MImageBody inline sizing overrides (`!important`) for both single images and grid cells
+
+## Forward Dialog: Image & Gallery Forwarding
+
+The ForwardDialog was rewritten to properly handle image and gallery forwarding. Text messages continue using the custom reply-format (showing the original sender). Images are forwarded as-is with no sender attribution (matching original Element behaviour). Gallery forwarding sends all images in the group as separate events. The dialog preview shows bubble avatar correctly and renders gallery images in a grid.
+
+See `customizations/FORWARD_DIALOG.md` for full implementation documentation.
+
+**Files changed:**
+
+- `apps/web/src/components/views/dialogs/ForwardDialog.tsx`
+  - Removed `transformEvent()` and its ~12 unused imports (location events, beacons, editor model, etc.)
+  - Removed unused `type`/`content` props from `IEntryProps`; Entry now builds content internally
+  - Added `extraEvents?: MatrixEvent[]` to `IProps` for gallery forwarding
+  - New `buildImageForwardContent()`: forwards images as-is, no `<mx-reply>` attribution; preserves or replaces caption via MSC2530 (body = caption, filename = original filename)
+  - New `buildForwardContents()`: orchestrator that dispatches to `buildReplyForwardContent` (text) or `buildImageForwardContent` (images); returns multiple events for galleries
+  - `Entry.send()` iterates the event array and sends sequentially
+  - Preview: galleries render via `MImageGallery` with a manual avatar; single images/text use `EventTile`
+  - Added optional message textarea (caption for images, appended to reply for text)
+- `apps/web/src/components/views/context_menus/MessageContextMenu.tsx`
+  - Added `galleryEvents?: MatrixEvent[]` to `IProps`
+  - `onForwardClick` passes gallery events (minus the clicked one) as `extraEvents`
+- `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx`
+  - Added `galleryEvents: MatrixEvent[]` to `GalleryTileProps`
+  - Passes `imageEvents` array through to `MessageContextMenu`
+- `apps/web/src/dispatcher/payloads/OpenForwardDialogPayload.ts`
+  - Added `extraEvents?: MatrixEvent[]` field
+- `apps/web/src/utils/DialogOpener.ts`
+  - Passes `extraEvents` through to `ForwardDialog` modal
+- `apps/web/res/css/views/dialogs/_ForwardDialog.pcss`
+  - New `.mx_ForwardDialog_galleryPreview`: flex container with inline avatar + bubble wrapper for gallery grid preview
+  - Fixed `.mx_ForwardDialog_preview`: changed `overflow-y: auto` to `overflow: visible` and added `padding-left/right: 50px` to prevent clipping of absolutely-positioned bubble avatars

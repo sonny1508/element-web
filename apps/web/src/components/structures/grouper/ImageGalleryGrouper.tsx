@@ -54,6 +54,8 @@ interface GalleryTileProps {
     eventId: string;
     /** The "representative" event used for the context menu (first in group). */
     mxEvent: MatrixEvent;
+    /** All events in the gallery group (for forwarding). */
+    galleryEvents: MatrixEvent[];
     layout: Layout | undefined;
     isOwnEvent: boolean;
     permalinkCreator?: RoomPermalinkCreator;
@@ -128,7 +130,7 @@ function GalleryActionBar({ mxEvent, onOptionsClick }: GalleryActionBarProps): R
 // GalleryTile — wrapper providing hover highlight, action bar & context menu
 // -------------------------------------------------------------------------
 
-function GalleryTile({ eventId, mxEvent, layout, isOwnEvent, permalinkCreator, children }: GalleryTileProps): ReactNode {
+function GalleryTile({ eventId, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, children }: GalleryTileProps): ReactNode {
     const [hover, setHover] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ left: number; top: number; bottom: number } | null>(null);
 
@@ -179,6 +181,7 @@ function GalleryTile({ eventId, mxEvent, layout, isOwnEvent, permalinkCreator, c
                 <MessageContextMenu
                     {...aboveRightOf(contextMenu)}
                     mxEvent={mxEvent}
+                    galleryEvents={galleryEvents.length > 1 ? galleryEvents : undefined}
                     permalinkCreator={permalinkCreator}
                     onFinished={onCloseMenu}
                     rightClick={true}
@@ -267,6 +270,7 @@ export class ImageGalleryGrouper extends BaseGrouper {
                 key={`gallery-${firstEventId}`}
                 eventId={firstEventId}
                 mxEvent={imageEvents[0]}
+                galleryEvents={imageEvents}
                 layout={layout}
                 isOwnEvent={isOwnEvent}
                 permalinkCreator={this.panel.props.permalinkCreator}

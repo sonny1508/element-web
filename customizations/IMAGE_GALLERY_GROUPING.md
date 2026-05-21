@@ -179,6 +179,10 @@ The `!important` declarations are necessary because MImageBody sets inline style
 
 `ImageGalleryGrouper` is checked first (index 0 in the `groupers` array). If it claims an event, `CreationGrouper` and `MainGrouper` never see it. If an image event doesn't start a new group (e.g., `shouldShow` is false), it falls through to the next grouper.
 
+## Gallery forwarding
+
+When a user right-clicks a gallery and selects Forward, all images in the group are forwarded together. The `galleryEvents` array is threaded from `ImageGalleryGrouper.getTiles()` through `GalleryTile` and `MessageContextMenu` to the `ForwardDialog`. Images are forwarded as-is with no sender attribution. See `customizations/FORWARD_DIALOG.md` for full details.
+
 ## Relationship to MSC4274
 
 MSC4274 proposes a native Matrix gallery event type (`m.gallery`). It was evaluated and deemed too immature for adoption. The current approach is purely visual — no new event types are created. Each image remains a separate `m.room.message` event with `msgtype: m.image`. If MSC4274 stabilizes in the future, this grouper could be replaced with a single-event approach.

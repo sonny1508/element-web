@@ -15,11 +15,7 @@ import {
     type RoomMember,
     EventType,
     type MatrixClient,
-    ContentHelpers,
-    type ILocationContent,
-    LocationAssetType,
-    M_TIMESTAMP,
-    M_BEACON,
+    MsgType,
     type TimelineEvents,
 } from "matrix-js-sdk/src/matrix";
 import { KnownMembership } from "matrix-js-sdk/src/types";
@@ -44,8 +40,6 @@ import TruncatedList from "../elements/TruncatedList";
 import { Action } from "../../../dispatcher/actions";
 import { type ViewRoomPayload } from "../../../dispatcher/payloads/ViewRoomPayload";
 import AccessibleButton, { type ButtonEvent } from "../elements/AccessibleButton";
-import { isLocationEvent } from "../../../utils/EventUtils";
-import { isSelfLocation, locationEventGeoUri } from "../../../utils/location";
 import { RoomContextDetails } from "../rooms/RoomContextDetails";
 import { filterBoolean } from "../../../utils/arrays";
 import {
@@ -58,11 +52,7 @@ import {
 import { getKeyBindingsManager } from "../../../KeyBindingsManager";
 import { KeyBindingAction } from "../../../accessibility/KeyboardShortcuts";
 import { OverflowTileView } from "../rooms/OverflowTileView";
-import { attachMentions } from "../../../utils/messages";
-import { CommandPartCreator } from "../../../editor/parts";
-import SettingsStore from "../../../settings/SettingsStore";
-import { parseEvent } from "../../../editor/deserialize";
-import EditorModel from "../../../editor/model";
+import MImageGallery from "../messages/MImageGallery";
 
 const AVATAR_SIZE = 30;
 
@@ -70,19 +60,20 @@ interface IProps {
     matrixClient: MatrixClient;
     // The event to forward
     event: MatrixEvent;
+    // Additional events to forward together (e.g. gallery images)
+    extraEvents?: MatrixEvent[];
     // We need a permalink creator for the source room to pass through to EventTile
     // in case the event is a reply (even though the user can't get at the link)
     permalinkCreator: RoomPermalinkCreator;
     onFinished(this: void): void;
 }
 
-interface IEntryProps<K extends keyof TimelineEvents> {
+interface IEntryProps {
     room: Room;
-    type: K;
-    content: TimelineEvents[K];
     matrixClient: MatrixClient;
-    originalEvent: MatrixEvent; // modified
-    optionalMessage: string; // modified
+    originalEvent: MatrixEvent;
+    extraEvents?: MatrixEvent[];
+    optionalMessage: string;
     onFinished(this: void, success: boolean): void;
 }
 
@@ -93,7 +84,7 @@ enum SendState {
     Failed,
 }
 
-const Entry: React.FC<IEntryProps<any>> = ({ room, type, content, matrixClient: cli, originalEvent, optionalMessage, onFinished }) => {
+const Entry: React.FC<IEntryProps> = ({ room, matrixClient: cli, originalEvent, extraEvents, optionalMessage, onFinished }) => {
     const [sendState, setSendState] = useState<SendState>(SendState.CanSend);
     const [onFocus, isActive, ref] = useRovingTabIndex<HTMLDivElement>();
 
@@ -106,15 +97,18 @@ const Entry: React.FC<IEntryProps<any>> = ({ room, type, content, matrixClient: 
         });
         onFinished(true);
     };
-    const send = async (): Promise<void> => { // Modified
+
+    const send = async (): Promise<void> => {
         setSendState(SendState.Sending);
         try {
-            const { type: replyType, content: replyContent } = buildReplyForwardContent(
-                        originalEvent,
-                        cli,
-                        optionalMessage,
-            );
-            await cli.sendEvent(room.roomId, replyType, replyContent);
+            const eventsToSend = buildForwardContents(originalEvent, extraEvents, optionalMessage);
+            for (const { type: evType, content: evContent } of eventsToSend) {
+                await cli.sendEvent(
+                    room.roomId,
+                    evType as keyof TimelineEvents,
+                    evContent as TimelineEvents[keyof TimelineEvents],
+                );
+            }
             setSendState(SendState.Sent);
         } catch {
             setSendState(SendState.Failed);
@@ -191,88 +185,21 @@ const Entry: React.FC<IEntryProps<any>> = ({ room, type, content, matrixClient: 
     );
 };
 
-/**
- * Transform content of a MatrixEvent before forwarding:
- * 1. Strip all relations.
- * 2. Convert location events into a static pin-drop location share,
- *    and remove description from self-location shares.
- * 3. Parse the event back into an EditorModel and recalculate mentions.
- *
- * @param event - The MatrixEvent to transform.
- * @param cli - The MatrixClient (used for recalculation of mentions).
- * @returns The transformed event type and content.
- */
-const transformEvent = (event: MatrixEvent, cli: MatrixClient): { type: string; content: IContent } => {
-    const {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        "m.relates_to": _, // strip relations - in future we will attach a relation pointing at the original event
-        // We're taking a shallow copy here to avoid https://github.com/vector-im/element-web/issues/10924
-        ...content
-    } = event.getContent();
-
-    // beacon pulses get transformed into static locations on forward
-    const type = M_BEACON.matches(event.getType()) ? EventType.RoomMessage : event.getType();
-
-    // self location shares should have their description removed
-    // and become 'pin' share type
-    if (
-        (isLocationEvent(event) && isSelfLocation(content as ILocationContent)) ||
-        // beacon pulses get transformed into static locations on forward
-        M_BEACON.matches(event.getType())
-    ) {
-        const timestamp = M_TIMESTAMP.findIn<number>(content as ILocationContent);
-        const geoUri = locationEventGeoUri(event);
-        return {
-            type,
-            content: {
-                ...content,
-                ...ContentHelpers.makeLocationContent(
-                    undefined, // text
-                    geoUri,
-                    timestamp || Date.now(),
-                    undefined, // description
-                    LocationAssetType.Pin,
-                ),
-            },
-        };
-    }
-
-    // Mentions can leak information about the context of the original message, so:
-    // 1. Parse the event's message body back into an EditorModel, then
-    // 2. Pass through attachMentions() to recalculate mentions.
-    const room = cli.getRoom(event.getRoomId())!;
-    const partCreator = new CommandPartCreator(room, cli);
-    const parts = parseEvent(event, partCreator, {
-        shouldEscape: SettingsStore.getValue("MessageComposerInput.useMarkdown"),
-    });
-    const model = new EditorModel(parts, partCreator); // Temporary EditorModel to pass through
-    const userId = cli.getSafeUserId();
-    attachMentions(userId, content, model, undefined);
-
-    return { type, content }; // Modified 
-};
-
-// customize Forward -> Reply text format
+// Build reply-format forward content for text messages
 const buildReplyForwardContent = (
     event: MatrixEvent,
-    cli: MatrixClient,
     optionalMessage: string,
 ): { type: string; content: IContent } => {
     const originalSenderId = event.getSender() ?? "";
-    const originalEventId = event.getId() ?? "";
-    const originalRoomId = event.getRoomId() ?? "";
 
-    // Get the original body (text fallback)
     const originalContent = event.getContent();
     const originalBody: string = originalContent.body ?? "";
 
-    // Construct fallback plain text body (Matrix reply format)
     const replyFallback = `> <${originalSenderId}> ${originalBody}`;
     const fullBody = optionalMessage
         ? `${replyFallback}\n\n${optionalMessage}`
         : replyFallback;
 
-    // Construct HTML formatted body
     const originalHtml: string = originalContent.formatted_body ?? originalBody;
     const replyHtml =
         (optionalMessage ? `<p>${optionalMessage}</p>` : "") +
@@ -291,7 +218,88 @@ const buildReplyForwardContent = (
     return { type: EventType.RoomMessage, content };
 };
 
-const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, permalinkCreator, onFinished }) => {
+// Build forward content for an image event.
+// Images are forwarded as-is (like original Element behaviour) — no sender attribution.
+// If the user typed an optional message it becomes an MSC2530 caption
+// (body = message text, filename = original filename so clients know it's a caption).
+const buildImageForwardContent = (
+    event: MatrixEvent,
+    optionalMessage: string,
+): { type: string; content: IContent } => {
+    const originalContent = event.getContent();
+
+    // Strip relations and text formatting fields; keep media fields (url, info, msgtype …)
+    const {
+        "m.relates_to": _rel,
+        body: _body,
+        filename: _filename,
+        format: _format,
+        formatted_body: _fmtBody,
+        ...mediaFields
+    } = originalContent;
+
+    const originalFilename = originalContent.filename || originalContent.body || "image";
+    const hasOriginalCaption =
+        originalContent.filename && originalContent.filename !== originalContent.body;
+    const originalCaption = hasOriginalCaption ? originalContent.body : undefined;
+
+    // Determine the caption to use: user-typed message takes precedence,
+    // otherwise preserve the original caption if one existed.
+    const caption = optionalMessage || originalCaption;
+
+    if (!caption) {
+        // Plain image, no caption — forward as-is
+        return {
+            type: EventType.RoomMessage,
+            content: {
+                ...mediaFields,
+                body: originalFilename,
+                ...(originalContent.filename ? { filename: originalContent.filename } : {}),
+                "m.mentions": {},
+            },
+        };
+    }
+
+    // Image with caption (MSC2530 style): body = caption text, filename = original file name
+    return {
+        type: EventType.RoomMessage,
+        content: {
+            ...mediaFields,
+            body: caption,
+            filename: originalFilename,
+            "m.mentions": {},
+        },
+    };
+};
+
+// Build all forward events for sending (may return multiple for gallery)
+const buildForwardContents = (
+    event: MatrixEvent,
+    extraEvents: MatrixEvent[] | undefined,
+    optionalMessage: string,
+): Array<{ type: string; content: IContent }> => {
+    const isImage = event.getContent().msgtype === MsgType.Image;
+
+    if (!isImage) {
+        return [buildReplyForwardContent(event, optionalMessage)];
+    }
+
+    const results: Array<{ type: string; content: IContent }> = [];
+
+    // First image may carry the user's optional message as caption
+    results.push(buildImageForwardContent(event, optionalMessage));
+
+    // Additional gallery images forwarded as-is (no caption)
+    if (extraEvents) {
+        for (const imgEvent of extraEvents) {
+            results.push(buildImageForwardContent(imgEvent, ""));
+        }
+    }
+
+    return results;
+};
+
+const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, extraEvents, permalinkCreator, onFinished }) => {
     const userId = cli.getSafeUserId();
     const [profileInfo, setProfileInfo] = useState<any>({});
     const [optionalMessage, setOptionalMessage] = useState("");
@@ -299,13 +307,20 @@ const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, permalinkCr
         cli.getProfileInfo(userId).then((info) => setProfileInfo(info));
     }, [cli, userId]);
 
-    const { type, content } = buildReplyForwardContent(event, cli, optionalMessage);
+    const isImage = event.getContent().msgtype === MsgType.Image;
+    const allImageEvents = isImage ? [event, ...(extraEvents ?? [])] : [];
+    const isGallery = allImageEvents.length > 1;
+
+    // Build preview content: for images use image forward content, for text use reply format
+    const previewContent = isImage
+        ? buildImageForwardContent(event, optionalMessage).content
+        : buildReplyForwardContent(event, optionalMessage).content;
 
     // For the message preview we fake the sender as ourselves
     const mockEvent = new MatrixEvent({
         type: "m.room.message",
         sender: userId,
-        content,
+        content: previewContent,
         unsigned: {
             age: 97,
         },
@@ -387,13 +402,32 @@ const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, permalinkCr
                     mx_IRCLayout: previewLayout == Layout.IRC,
                 })}
             >
-                <EventTile
-                    mxEvent={mockEvent}
-                    layout={previewLayout}
-                    permalinkCreator={permalinkCreator}
-                    as="div"
-                    inhibitInteraction
-                />
+                {isGallery ? (
+                    <div className="mx_ForwardDialog_galleryPreview">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            className="mx_ForwardDialog_previewAvatar"
+                            src={avatarUrlForUser(
+                                { avatarUrl: profileInfo.avatar_url },
+                                AVATAR_SIZE, AVATAR_SIZE, "crop",
+                            ) ?? undefined}
+                            width={AVATAR_SIZE}
+                            height={AVATAR_SIZE}
+                            alt=""
+                        />
+                        <div className="mx_EventTile_gallery_bubble">
+                            <MImageGallery events={allImageEvents} onHeightChanged={() => {}} />
+                        </div>
+                    </div>
+                ) : (
+                    <EventTile
+                        mxEvent={mockEvent}
+                        layout={previewLayout}
+                        permalinkCreator={permalinkCreator}
+                        as="div"
+                        inhibitInteraction
+                    />
+                )}
             </div>
             <hr />
             <div className="mx_ForwardDialog_optionalMessage">
@@ -460,10 +494,9 @@ const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, permalinkCr
                                                     <Entry
                                                         key={room.roomId}
                                                         room={room}
-                                                        type={type}
-                                                        content={content}
                                                         matrixClient={cli}
                                                         originalEvent={event}
+                                                        extraEvents={extraEvents}
                                                         optionalMessage={optionalMessage}
                                                         onFinished={onFinished}
                                                     />

@@ -37,6 +37,36 @@ Please see LICENSE files in the repository root for full details.
     }
 }
 
+.mx_ForwardDialog_galleryPreview {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: 380px;
+    pointer-events: none;
+
+    .mx_ForwardDialog_previewAvatar {
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .mx_EventTile_gallery_bubble {
+        flex: 1;
+        min-width: 0;
+        background: var(--cpd-color-bg-subtle-secondary, $eventbubble-others-bg);
+        border-radius: 12px;
+        overflow: hidden;
+        padding: 11px;
+
+        .mx_MImageGallery {
+            max-width: 100%;
+        }
+
+        .mx_MImageGallery_grid {
+            border-radius: 0;
+        }
+    }
+}
+
 /* Original */
 .mx_ForwardDialog {
     width: 520px;
@@ -58,7 +88,12 @@ Please see LICENSE files in the repository root for full details.
     > .mx_ForwardDialog_preview {
         max-height: 30%;
         flex-shrink: 0;
-        overflow-y: auto;
+        overflow: visible;
+
+        /* Horizontal padding so the absolutely-positioned bubble avatar
+           (left: -36px for others, right: -38px for self) is not clipped. */
+        padding-left: 50px;
+        padding-right: 50px;
 
         .mx_EventTile[data-layout="bubble"] {
             margin-top: 20px;

@@ -132,6 +132,8 @@ interface IProps extends MenuProps {
     link?: string;
 
     getRelationsForEvent?: GetRelationsForEvent;
+    /** Extra events to forward together (e.g. all images in a gallery). */
+    galleryEvents?: MatrixEvent[];
 }
 
 interface IState {
@@ -268,9 +270,11 @@ export default class MessageContextMenu extends React.Component<IProps, IState> 
     };
 
     private onForwardClick = (forwardableEvent: MatrixEvent) => (): void => {
+        const gallery = this.props.galleryEvents;
         dis.dispatch<OpenForwardDialogPayload>({
             action: Action.OpenForwardDialog,
             event: forwardableEvent,
+            extraEvents: gallery?.filter((e) => e.getId() !== forwardableEvent.getId()),
             permalinkCreator: this.props.permalinkCreator ?? null,
         });
         this.closeMenu();
