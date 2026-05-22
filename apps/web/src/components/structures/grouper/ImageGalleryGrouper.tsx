@@ -45,7 +45,8 @@ const MAX_GAP_MS = 10_000; // 10 seconds
 // -------------------------------------------------------------------------
 
 interface GalleryTileProps {
-    eventId: string;
+    /** Comma-separated event IDs for scroll tracking (all events in the group). */
+    scrollTokens: string;
     /** The "representative" event used for the context menu (first in group). */
     mxEvent: MatrixEvent;
     /** All events in the gallery group (for forwarding). */
@@ -65,7 +66,7 @@ interface GalleryTileProps {
 const noop = (): void => {};
 const returnNull = (): null => null;
 
-function GalleryTile({ eventId, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, children }: GalleryTileProps): ReactNode {
+function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, children }: GalleryTileProps): ReactNode {
     const [hover, setHover] = useState(false);
     const [actionBarFocused, setActionBarFocused] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ left: number; top: number; bottom: number } | null>(null);
@@ -111,7 +112,7 @@ function GalleryTile({ eventId, mxEvent, galleryEvents, layout, isOwnEvent, perm
     return (
         <li
             className="mx_EventTile mx_EventTile_gallery"
-            data-scroll-tokens={eventId}
+            data-scroll-tokens={scrollTokens}
             data-layout={layout}
             data-self={isOwnEvent}
             onContextMenu={onContextMenu}
@@ -281,10 +282,14 @@ export class ImageGalleryGrouper extends BaseGrouper {
             );
         }
 
+        // Build comma-separated scroll tokens so the scroll panel can find
+        // this tile regardless of which gallery event it is tracking.
+        const scrollTokens = imageEvents.map((ev) => ev.getId()!).join(",");
+
         return [
             <GalleryTile
                 key={`gallery-${firstEventId}`}
-                eventId={firstEventId}
+                scrollTokens={scrollTokens}
                 mxEvent={imageEvents[0]}
                 galleryEvents={imageEvents}
                 layout={layout}

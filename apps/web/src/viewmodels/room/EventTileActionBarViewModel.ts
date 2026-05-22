@@ -69,6 +69,8 @@ export interface EventTileActionBarViewModelProps {
     getRelationsForEvent?: GetRelationsForEvent;
     /** Called when the expand or collapse thread action is activated. */
     onToggleThreadExpanded?: (anchor: HTMLElement | null) => void;
+    /** When true, the Hide media action is suppressed (e.g. for gallery groups where hiding a single image is misleading). */
+    disableHide?: boolean;
 }
 
 interface LocalActionBarState {
@@ -128,7 +130,7 @@ export class EventTileActionBarViewModel
     ): ActionBarViewSnapshot {
         const client = MatrixClientPeg.safeGet();
         const eventState = EventTileActionBarViewModel.getDerivedEventState(props, client);
-        const mediaState = EventTileActionBarViewModel.getDerivedMediaState(props.mxEvent, client, localState);
+        const mediaState = EventTileActionBarViewModel.getDerivedMediaState(props.mxEvent, client, localState, props.disableHide);
 
         return {
             actions: EventTileActionBarViewModel.resolveActions(eventState, mediaState),
@@ -217,13 +219,14 @@ export class EventTileActionBarViewModel
         mxEvent: MatrixEvent,
         client: ReturnType<typeof MatrixClientPeg.safeGet>,
         localState: LocalActionBarState,
+        disableHide?: boolean,
     ): DerivedMediaState {
         const contentActionable = isContentActionable(mxEvent);
         const mediaHelper = MediaEventHelper.isEligible(mxEvent) ? new MediaEventHelper(mxEvent) : undefined;
 
         return {
             showDownload: contentActionable && Boolean(mediaHelper) && localState.canDownload,
-            showHide: contentActionable && MediaEventHelper.canHide(mxEvent) && getMediaVisibility(mxEvent, client),
+            showHide: !disableHide && contentActionable && MediaEventHelper.canHide(mxEvent) && getMediaVisibility(mxEvent, client),
             isDownloadEncrypted: mediaHelper?.media.isEncrypted ?? false,
             isDownloadLoading: localState.isDownloadLoading,
         };

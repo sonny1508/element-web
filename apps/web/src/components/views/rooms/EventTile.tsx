@@ -2019,6 +2019,7 @@ export function ActionBarWrapper({
     const handleReactionsClick = useCallback((anchor: HTMLElement | null): void => {
         setReactionsMenuAnchorRect(anchor?.getBoundingClientRect() ?? null);
     }, []);
+    const disableHide = galleryEvents && galleryEvents.length > 1;
     const vm = useCreateAutoDisposedViewModel(
         () =>
             new EventTileActionBarViewModel({
@@ -2033,6 +2034,7 @@ export function ActionBarWrapper({
                 onOptionsClick: handleOptionsClick,
                 onReactionsClick: handleReactionsClick,
                 getRelationsForEvent,
+                disableHide: !!disableHide,
             }),
     );
 
@@ -2049,6 +2051,7 @@ export function ActionBarWrapper({
             onToggleThreadExpanded: toggleThreadExpanded,
             onOptionsClick: handleOptionsClick,
             onReactionsClick: handleReactionsClick,
+            disableHide: !!disableHide,
         });
     }, [
         vm,
@@ -2063,6 +2066,7 @@ export function ActionBarWrapper({
         handleOptionsClick,
         handleReactionsClick,
         toggleThreadExpanded,
+        disableHide,
     ]);
 
     useEffect(() => {
