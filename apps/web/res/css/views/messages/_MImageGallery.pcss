@@ -260,43 +260,19 @@
 }
 
 // -------------------------------------------------------------------------
-// Gallery hover action bar (Reply · Thread · Options)
+// Reactions row inside a gallery tile
 // -------------------------------------------------------------------------
 
-.mx_GalleryActionBar {
-    position: absolute;
-    top: -32px;
-    right: 0;
-    z-index: 10;
-    display: inline-flex;
-    gap: 2px;
-    border-radius: 8px;
-    background: var(--cpd-color-bg-canvas-default);
-    border: 1px solid var(--cpd-color-border-disabled);
-    padding: 2px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+.mx_EventTile_gallery > .mx_EventTile_footer {
+    position: relative;
+    z-index: 1;
+    padding: 0 var(--gutterSize, 11px);
 }
 
-.mx_GalleryActionBar_button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    margin: 0;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--cpd-color-icon-secondary);
-    cursor: pointer;
+// -------------------------------------------------------------------------
+// Standard action bar positioning inside gallery tiles
+// -------------------------------------------------------------------------
 
-    &:hover {
-        background: var(--cpd-color-bg-subtle-secondary);
-    }
-
-    &:focus-visible {
-        outline: 2px solid var(--cpd-color-border-focused, #0dbd8b);
-        outline-offset: -2px;
-    }
+.mx_EventTile_gallery .mx_MessageActionBar {
+    right: 0;
 }

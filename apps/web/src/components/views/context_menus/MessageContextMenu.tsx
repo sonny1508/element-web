@@ -75,13 +75,15 @@ import { type ShowThreadPayload } from "../../../dispatcher/payloads/ShowThreadP
 import { CardContext } from "../right_panel/context";
 import PinningUtils from "../../../utils/PinningUtils";
 import PosthogTrackers from "../../../PosthogTrackers.ts";
+import { registerGalleryForThread } from "../../structures/grouper/galleryThreadRegistry";
 
 interface IReplyInThreadButton {
     mxEvent: MatrixEvent;
+    galleryEvents?: MatrixEvent[];
     closeMenu: () => void;
 }
 
-const ReplyInThreadButton: React.FC<IReplyInThreadButton> = ({ mxEvent, closeMenu }) => {
+const ReplyInThreadButton: React.FC<IReplyInThreadButton> = ({ mxEvent, galleryEvents, closeMenu }) => {
     const context = useContext(CardContext);
     const relationType = mxEvent?.getRelation()?.rel_type;
 
@@ -89,6 +91,9 @@ const ReplyInThreadButton: React.FC<IReplyInThreadButton> = ({ mxEvent, closeMen
     if (Boolean(relationType) && relationType !== RelationType.Thread) return null;
 
     const onClick = (): void => {
+        if (galleryEvents && galleryEvents.length > 1) {
+            registerGalleryForThread(mxEvent.getId()!, galleryEvents);
+        }
         if (mxEvent.getThread() && !mxEvent.isThreadRoot) {
             dis.dispatch<ShowThreadPayload>({
                 action: Action.ShowThread,
@@ -663,7 +668,7 @@ export default class MessageContextMenu extends React.Component<IProps, IState> 
             Thread.hasServerSideSupport &&
             timelineRenderingType !== TimelineRenderingType.Thread
         ) {
-            replyInThreadButton = <ReplyInThreadButton mxEvent={mxEvent} closeMenu={this.closeMenu} />;
+            replyInThreadButton = <ReplyInThreadButton mxEvent={mxEvent} galleryEvents={this.props.galleryEvents} closeMenu={this.closeMenu} />;
         }
 
         let reactButton: JSX.Element | undefined;

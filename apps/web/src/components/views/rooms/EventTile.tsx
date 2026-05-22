@@ -1800,7 +1800,7 @@ interface ReactionsRowWrapperProps {
     reactions?: Relations | null;
 }
 
-function ReactionsRowWrapper({ mxEvent, reactions }: Readonly<ReactionsRowWrapperProps>): JSX.Element | null {
+export function ReactionsRowWrapper({ mxEvent, reactions }: Readonly<ReactionsRowWrapperProps>): JSX.Element | null {
     const roomContext = useContext(RoomContext);
     const userId = roomContext.room?.client.getUserId() ?? undefined;
     const [reactionGroups, setReactionGroups] = useState<ReactionGroup[]>(() => getReactionGroups(reactions));
@@ -1956,7 +1956,7 @@ function ReactionsRowWrapper({ mxEvent, reactions }: Readonly<ReactionsRowWrappe
     );
 }
 
-interface ActionBarWrapperProps {
+export interface ActionBarWrapperProps {
     mxEvent: MatrixEvent;
     reactions?: Relations | null;
     permalinkCreator?: RoomPermalinkCreator;
@@ -1966,6 +1966,7 @@ interface ActionBarWrapperProps {
     isQuoteExpanded?: boolean;
     toggleThreadExpanded: () => void;
     getRelationsForEvent?: GetRelationsForEvent;
+    galleryEvents?: MatrixEvent[];
 }
 
 interface ThreadListActionBarWrapperProps {
@@ -1995,7 +1996,7 @@ function ThreadListActionBarWrapper({
     return <ActionBarView vm={vm} className="mx_ThreadActionBar" />;
 }
 
-function ActionBarWrapper({
+export function ActionBarWrapper({
     mxEvent,
     reactions,
     permalinkCreator,
@@ -2005,6 +2006,7 @@ function ActionBarWrapper({
     isQuoteExpanded,
     toggleThreadExpanded,
     getRelationsForEvent,
+    galleryEvents,
 }: Readonly<ActionBarWrapperProps>): JSX.Element {
     const roomContext = useContext(RoomContext);
     const { isCard } = useContext(CardContext);
@@ -2092,6 +2094,8 @@ function ActionBarWrapper({
                 <MessageContextMenu
                     {...aboveLeftOf(optionsMenuAnchorRect)}
                     mxEvent={mxEvent}
+                    galleryEvents={galleryEvents}
+                    reactions={reactions}
                     permalinkCreator={permalinkCreator}
                     eventTileOps={eventTileOps}
                     collapseReplyChain={collapseReplyChain}
