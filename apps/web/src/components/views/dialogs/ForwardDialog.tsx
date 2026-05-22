@@ -416,7 +416,10 @@ const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, extraEvents
                             alt=""
                         />
                         <div className="mx_EventTile_gallery_bubble">
-                            <MImageGallery events={allImageEvents} onHeightChanged={() => {}} />
+                            <MImageGallery events={allImageEvents} maxGridSize={250} onHeightChanged={() => {}} />
+                            {optionalMessage && (
+                                <div className="mx_EventTile_galleryCaption">{optionalMessage}</div>
+                            )}
                         </div>
                     </div>
                 ) : (

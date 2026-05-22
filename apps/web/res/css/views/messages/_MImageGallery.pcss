@@ -6,9 +6,11 @@
  */
 
 // The gallery sits inside a normal EventTile content area.
+// Width is driven by the fixed-pixel grid columns set in the component;
+// max-width prevents overflow on narrow viewports.
 .mx_MImageGallery {
-    max-width: 324px;
-    width: 100%;
+    max-width: 500px;
+    overflow: hidden;
 }
 
 // -------------------------------------------------------------------------
@@ -61,12 +63,24 @@
         aspect-ratio: unset !important;
     }
 
+    // Override the inner sizing <div style={sizing}> that MImageBody
+    // wraps around the <img> — without this, the inline maxWidth /
+    // maxHeight let the image's intrinsic size inflate the cell.
+    // :has() targets only the div that actually contains the thumbnail,
+    // avoiding the SwitchTransition placeholder wrapper.
+    .mx_MImageBody_thumbnail_container > div:has(> .mx_MImageBody_thumbnail) {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+    }
+
     .mx_MImageBody_thumbnail {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        max-width: unset;
-        max-height: unset;
+        max-width: unset !important;
+        max-height: unset !important;
         display: block;
     }
 
@@ -159,10 +173,10 @@
             overflow: hidden;
             // Padding between images and bubble border
             padding: var(--gutterSize);
-
-            .mx_MImageGallery {
-                max-width: 100%;
-            }
+            // Cap the content area to match the grid width (500px)
+            // so captions wrap instead of inflating the bubble.
+            max-width: 500px;
+            width: fit-content;
 
             // The bubble border-radius clips corners; strip the grid's own
             .mx_MImageGallery_grid {
@@ -211,9 +225,10 @@
                 }
             }
 
-            // Caption: separated from images above
+            // Caption: small gap between grid and text so the bubble
+            // stays close in size to the no-caption variant.
             .mx_EventTile_galleryCaption {
-                padding-top: var(--gutterSize);
+                padding-top: 4px;
             }
         }
 

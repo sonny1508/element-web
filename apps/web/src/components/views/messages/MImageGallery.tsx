@@ -11,12 +11,11 @@ Please see LICENSE files in the repository root for full details.
  * Drop at:
  *   src/components/views/messages/MImageGallery.tsx
  *
- * Renders a run of consecutive same-sender image events as a Teams-style grid:
- *
- *   1 image  → full-width single (shouldn't normally happen; single images skip this)
- *   2 images → two equal side-by-side columns
- *   3 images → left half tall + right column two stacked
- *   4+       → 2×2 grid; last visible cell has "+N more" overlay until expanded
+ * Renders a run of consecutive same-sender image events as a compact grid
+ * of uniform square thumbnails.  All cells are the same size; images are
+ * cropped (object-fit: cover) so the grid stays tight regardless of the
+ * original aspect ratios.  Clicking an image still opens the full-size
+ * lightbox via MImageBody.
  *
  * The component is purely visual — no Matrix events are modified.
  * Each cell delegates to the existing <MImageBody> so all lightbox,
@@ -65,41 +64,22 @@ export interface IMImageGalleryProps extends IGalleryPassthroughProps {
      * Defaults to 4 (the 2×2 grid).
      */
     maxVisible?: number;
+    /**
+     * Maximum grid dimension in pixels (height reference).  Defaults to 500
+     * for the timeline; the forward-dialog preview passes 250 for a compact view.
+     */
+    maxGridSize?: number;
     /** Called when any child image changes height (wired to MessagePanel.onHeightChanged). */
     onHeightChanged?: () => void;
 }
 
 // --------------------------------------------------------------------------
-// Grid layout helpers
+// Grid sizing constants
 // --------------------------------------------------------------------------
 
-/**
- * Returns the explicit CSS grid-area for a cell at `index` given the total
- * number of *visible* cells. The grid is always declared as 2 cols × 2 rows.
- *
- *   2 cells → each fills one col, full height  (1 col × 2 rows each)
- *   3 cells → cell 0: left col full height; cells 1-2: right col, 1 row each
- *   4 cells → normal 2×2
- *   >4 (expanded) → not used; we switch to CSS auto-flow instead
- */
-function gridArea(index: number, visibleCount: number): React.CSSProperties {
-    if (visibleCount === 1) {
-        return { gridColumn: "1 / span 2", gridRow: "1 / span 2" };
-    }
-    if (visibleCount === 2) {
-        // side-by-side
-        return { gridColumn: `${index + 1}`, gridRow: "1 / span 2" };
-    }
-    if (visibleCount === 3) {
-        if (index === 0) return { gridColumn: "1", gridRow: "1 / span 2" };
-        return { gridColumn: "2", gridRow: `${index}` }; // row 1 then row 2
-    }
-    // 4: standard 2×2
-    return {
-        gridColumn: `${(index % 2) + 1}`,
-        gridRow: `${Math.floor(index / 2) + 1}`,
-    };
-}
+const MAX_GRID_SIZE = 500;
+const GRID_GAP = 2;
+const MAX_CELL_SIZE = Math.floor((MAX_GRID_SIZE - GRID_GAP) / 2); // 249
 
 // --------------------------------------------------------------------------
 // Component
@@ -109,6 +89,7 @@ export const MImageGallery: FC<IMImageGalleryProps> = ({
     events,
     mediaEventHelperForEvent,
     maxVisible = 4,
+    maxGridSize = MAX_GRID_SIZE,
     onHeightChanged,
     ...passthroughProps
 }) => {
@@ -118,6 +99,22 @@ export const MImageGallery: FC<IMImageGalleryProps> = ({
     const overflowCount = events.length - maxVisible;
     const hasOverflow = !expanded && overflowCount > 0;
     const visibleCount = visibleEvents.length;
+    const rowCount = Math.ceil(visibleCount / 2);
+
+    const maxCell = Math.floor((maxGridSize - GRID_GAP) / 2);
+    const cellSize = Math.floor(
+        Math.min((maxGridSize - (rowCount - 1) * GRID_GAP) / rowCount, maxCell),
+    );
+
+    const gridStyle: React.CSSProperties = expanded
+        ? {
+              gridTemplateColumns: `repeat(2, ${maxCell}px)`,
+              gridAutoRows: `${maxCell}px`,
+          }
+        : {
+              gridTemplateColumns: `repeat(2, ${cellSize}px)`,
+              gridTemplateRows: `repeat(${rowCount}, ${cellSize}px)`,
+          };
 
     return (
         <div className="mx_MImageGallery">
@@ -125,17 +122,7 @@ export const MImageGallery: FC<IMImageGalleryProps> = ({
                 className={classNames("mx_MImageGallery_grid", {
                     "mx_MImageGallery_grid--expanded": expanded,
                 })}
-                // Only set the explicit 2×2 template when not expanded.
-                // Expanded mode falls back to CSS auto-flow (2 col wrap).
-                style={
-                    !expanded
-                        ? {
-                              display: "grid",
-                              gridTemplateColumns: "repeat(2, 1fr)",
-                              gridTemplateRows: "repeat(2, 1fr)",
-                          }
-                        : undefined
-                }
+                style={gridStyle}
             >
                 {visibleEvents.map((event, i) => {
                     const isLastVisible = i === visibleCount - 1;
@@ -148,7 +135,6 @@ export const MImageGallery: FC<IMImageGalleryProps> = ({
                             className={classNames("mx_MImageGallery_cell", {
                                 "mx_MImageGallery_cell--hasOverlay": showOverlay,
                             })}
-                            style={!expanded ? gridArea(i, visibleCount) : undefined}
                         >
                             <MImageBody
                                 mxEvent={event}
