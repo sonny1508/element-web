@@ -31,15 +31,6 @@ High contrast theme support removed entirely since only Glenda Light/Dark are av
 - `apps/web/src/components/structures/UserMenu.tsx`
   - Removed `isHighContrast` state and high contrast branch from theme toggle button
 
-## Hide Empty Rooms from Room List
-
-Rooms named "Empty room" with 0 or 1 joined members are unconditionally hidden from the sidebar, regardless of the client's cached membership state. This catches ghost rooms left behind by admin deletion or stale IndexedDB cache.
-
-**Files changed:**
-
-- `apps/web/src/stores/room-list-v3/isRoomVisible.ts`
-  - Hide any room named "Empty room" with `getJoinedMemberCount() <= 1` (previously also required `getMyMembership() !== Join`, which failed for stale cached memberships)
-
 ## Default Room History Visibility: Shared
 
 Newly created rooms (DMs and non-public) default to `shared` history visibility instead of `invited`, so joined members can read the full room history.
