@@ -1322,6 +1322,7 @@ export const SETTINGS: Settings = {
         supportedLevels: LEVELS_ACCOUNT_SETTINGS,
         default: {
             [MetaSpace.Home]: true,
+            [MetaSpace.Orphans]: true,
         },
     },
     "Spaces.showPeopleInSpace": {
