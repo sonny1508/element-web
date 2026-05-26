@@ -25,6 +25,8 @@ import { PollResponseEvent } from "matrix-js-sdk/src/extensible_events_v1/PollRe
 import PollsIcon from "@vector-im/compound-design-tokens/assets/web/icons/polls";
 import PollsEndIcon from "@vector-im/compound-design-tokens/assets/web/icons/polls-end";
 
+import { type RoomMember } from "matrix-js-sdk/src/matrix";
+
 import { _t } from "../../../languageHandler";
 import Modal from "../../../Modal";
 import { type IBodyProps } from "./IBodyProps";
@@ -41,7 +43,8 @@ interface IState {
     poll?: Poll;
     // poll instance has fetched at least one page of responses
     pollInitialised: boolean;
-    selected?: string | null | undefined; // Which option was clicked by the local user
+    // Local echo of the current user's answers: null = no echo, [] = locally un-voted, [id] = locally voted
+    selected?: string[] | null;
     voteRelations?: Relations; // Voting (response) events
 }
 
@@ -214,11 +217,11 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
         const userVotes = this.collectUserVotes();
         const userId = this.context.getSafeUserId();
         const myVote = userVotes.get(userId)?.answers[0];
-        if (answerId === myVote) {
-            return;
-        }
+        // Clicking the already-selected option un-votes by sending a spoiled (empty) response.
+        const isUnvote = answerId === myVote;
+        const answers = isUnvote ? [] : [answerId];
 
-        const response = PollResponseEvent.from([answerId], this.props.mxEvent.getId()!).serialize();
+        const response = PollResponseEvent.from(answers, this.props.mxEvent.getId()!).serialize();
 
         this.context
             .sendEvent(
@@ -235,7 +238,7 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
                 });
             });
 
-        this.setState({ selected: answerId });
+        this.setState({ selected: answers });
     }
 
     /**
@@ -301,9 +304,25 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
         const myVote = userVotes?.get(userId)?.answers[0];
         const disclosed = M_POLL_KIND_DISCLOSED.matches(pollEvent.kind.name);
 
-        // Disclosed: votes are hidden until I vote or the poll ends
+        // Disclosed (open): results are always visible — no need to vote first
         // Undisclosed: votes are hidden until poll ends
-        const showResults = poll.isEnded || (disclosed && myVote !== undefined);
+        const showResults = poll.isEnded || disclosed;
+
+        // Voters per answer id (only meaningful for disclosed polls).
+        // Built from the same `userVotes` map so the local-echo (and un-vote) is reflected.
+        const room = this.context.getRoom(this.props.mxEvent.getRoomId());
+        const votersByAnswer = new Map<string, RoomMember[]>();
+        if (disclosed) {
+            for (const vote of userVotes.values()) {
+                const answerId = vote.answers[0];
+                if (!answerId) continue; // spoiled / un-voted
+                const member = room?.getMember(vote.sender);
+                if (!member) continue;
+                const list = votersByAnswer.get(answerId);
+                if (list) list.push(member);
+                else votersByAnswer.set(answerId, [member]);
+            }
+        }
 
         let totalText: string;
         if (showResults && poll.undecryptableRelationsCount) {
@@ -358,6 +377,7 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
                                 voteCount={answerVotes}
                                 totalVoteCount={totalVotes}
                                 displayVoteCount={showResults}
+                                voters={disclosed ? (votersByAnswer.get(answer.id) ?? []) : undefined}
                                 onOptionSelected={this.selectOption.bind(this)}
                             />
                         );
@@ -410,7 +430,7 @@ export function allVotes(voteRelations: Relations): Array<UserVote> {
 export function collectUserVotes(
     userResponses: Array<UserVote>,
     userId?: string | null | undefined,
-    selected?: string | null | undefined,
+    selected?: string[] | string | null | undefined,
 ): Map<string, UserVote> {
     const userVotes: Map<string, UserVote> = new Map();
 
@@ -421,8 +441,9 @@ export function collectUserVotes(
         }
     }
 
-    if (selected && userId) {
-        userVotes.set(userId, new UserVote(0, userId, [selected]));
+    if (selected != null && userId) {
+        const answers = Array.isArray(selected) ? selected : [selected];
+        userVotes.set(userId, new UserVote(0, userId, answers));
     }
 
     return userVotes;

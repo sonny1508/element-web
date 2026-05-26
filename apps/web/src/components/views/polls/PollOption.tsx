@@ -9,11 +9,13 @@ Please see LICENSE files in the repository root for full details.
 import React, { type ReactNode } from "react";
 import classNames from "classnames";
 import { type PollAnswerSubevent } from "matrix-js-sdk/src/extensible_events_v1/PollStartEvent";
+import { type RoomMember } from "matrix-js-sdk/src/matrix";
 import { CheckIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
 
 import { _t } from "../../../languageHandler";
 import { Icon as TrophyIcon } from "../../../../res/img/element-icons/trophy.svg";
 import StyledRadioButton from "../elements/StyledRadioButton";
+import FacePile from "../elements/FacePile";
 
 type PollOptionContentProps = {
     answer: PollAnswerSubevent;
@@ -40,6 +42,8 @@ interface PollOptionProps extends PollOptionContentProps {
     optionNumber: number;
     isEnded?: boolean;
     isChecked?: boolean;
+    // Members who voted for this option, for disclosed polls. Undefined = don't render the row.
+    voters?: RoomMember[];
     onOptionSelected?: (id: string) => void;
     children?: ReactNode;
 }
@@ -102,6 +106,7 @@ export const PollOption: React.FC<PollOptionProps> = ({
     displayVoteCount,
     isEnded,
     isChecked,
+    voters,
     onOptionSelected,
 }) => {
     const cls = classNames({
@@ -134,6 +139,15 @@ export const PollOption: React.FC<PollOptionProps> = ({
             <div className="mx_PollOption_popularityBackground">
                 <div className="mx_PollOption_popularityAmount" style={{ width: `${answerPercent}%` }} />
             </div>
+            {voters && voters.length > 0 && (
+                <div
+                    className="mx_PollOption_voters"
+                    onClick={(e) => e.stopPropagation()}
+                    role="presentation"
+                >
+                    <FacePile members={voters} size="20px" overflow={false} />
+                </div>
+            )}
         </div>
     );
 };

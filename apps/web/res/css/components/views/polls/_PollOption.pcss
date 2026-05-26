@@ -93,8 +93,8 @@ Please see LICENSE files in the repository root for full details.
     }
 }
 
-/* options not actionable in these states */
-.mx_PollOption_checked,
+/* ended polls are no longer actionable; checked options remain clickable so the
+   user can click their selected option again to un-vote */
 .mx_PollOption_ended {
     pointer-events: none;
 }
@@ -113,4 +113,11 @@ Please see LICENSE files in the repository root for full details.
         border-radius: 8px;
         background-color: var(--cpd-color-icon-primary);
     }
+}
+
+.mx_PollOption_voters {
+    margin-top: $spacing-8;
+    display: flex;
+    /* keep clicks on avatars from triggering vote/un-vote on the parent option */
+    cursor: default;
 }
