@@ -7,24 +7,44 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
-import React, { type JSX } from "react";
+import React, { createRef, type JSX } from "react";
 import { FilesIcon } from "@vector-im/compound-design-tokens/assets/web/icons";
+import { type Room } from "matrix-js-sdk/src/matrix";
 
 import { _t } from "../../../languageHandler";
 import BaseDialog from "./BaseDialog";
 import DialogButtons from "../elements/DialogButtons";
 import { fileSize } from "../../../utils/FileUtils";
+import Autocomplete from "../rooms/Autocomplete";
+import { type ICompletion } from "../../../autocomplete/Autocompleter";
+
+/** A user the caption author chose via autocomplete; sent as m.mentions.user_ids. */
+export interface CaptionMention {
+    userId: string;
+    displayName: string;
+}
 
 interface IProps {
     file: File;
     currentIndex: number;
     totalFiles: number;
-    onFinished: (uploadConfirmed: boolean, uploadAll?: boolean, caption?: string) => void;
+    /** Room used to source @-mention completions for the caption input. */
+    room?: Room;
+    onFinished: (
+        uploadConfirmed: boolean,
+        uploadAll?: boolean,
+        caption?: string,
+        mentions?: CaptionMention[],
+    ) => void;
 }
 
 interface IState {
     objectUrl?: string;
     caption: string;
+    selectionStart: number;
+    selectionEnd: number;
+    /** All users picked via autocomplete since the dialog opened. Filtered at send time. */
+    mentions: CaptionMention[];
 }
 
 export default class UploadConfirmDialog extends React.Component<IProps, IState> {
@@ -33,10 +53,13 @@ export default class UploadConfirmDialog extends React.Component<IProps, IState>
         currentIndex: 0,
     };
 
+    private inputRef = createRef<HTMLInputElement>();
+    private autocompleteRef = createRef<Autocomplete>();
+
     public constructor(props: IProps) {
         super(props);
 
-        this.state = { caption: "" };
+        this.state = { caption: "", selectionStart: 0, selectionEnd: 0, mentions: [] };
     }
 
     public componentDidMount(): void {
@@ -58,23 +81,114 @@ export default class UploadConfirmDialog extends React.Component<IProps, IState>
         this.props.onFinished(false);
     };
 
+    /** Mentions that still have their display name present in the caption text. */
+    private activeMentions(): CaptionMention[] {
+        const { caption, mentions } = this.state;
+        const seen = new Set<string>();
+        return mentions.filter((m) => {
+            if (seen.has(m.userId)) return false;
+            if (!caption.includes(m.displayName)) return false;
+            seen.add(m.userId);
+            return true;
+        });
+    }
+
     private onUploadClick = (): void => {
-        this.props.onFinished(true, undefined, this.state.caption || undefined);
+        const caption = this.state.caption || undefined;
+        const mentions = caption ? this.activeMentions() : [];
+        this.props.onFinished(true, undefined, caption, mentions);
     };
 
     private onUploadAllClick = (): void => {
-        this.props.onFinished(true, true, this.state.caption || undefined);
+        const caption = this.state.caption || undefined;
+        const mentions = caption ? this.activeMentions() : [];
+        this.props.onFinished(true, true, caption, mentions);
+    };
+
+    private syncSelection = (): void => {
+        const input = this.inputRef.current;
+        if (!input) return;
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
+        if (start !== this.state.selectionStart || end !== this.state.selectionEnd) {
+            this.setState({ selectionStart: start, selectionEnd: end });
+        }
     };
 
     private onCaptionChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-        this.setState({ caption: e.target.value });
+        const value = e.target.value;
+        const caret = e.target.selectionStart ?? value.length;
+        this.setState({ caption: value, selectionStart: caret, selectionEnd: caret });
     };
 
+    private onCaptionSelect = (): void => {
+        this.syncSelection();
+    };
+
+    private autocompleteVisible(): boolean {
+        const ac = this.autocompleteRef.current;
+        return !!ac && ac.countCompletions() > 0;
+    }
+
     private onCaptionKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+        const ac = this.autocompleteRef.current;
+        if (ac && this.autocompleteVisible()) {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                ac.moveSelection(1);
+                return;
+            }
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                ac.moveSelection(-1);
+                return;
+            }
+            if (e.key === "Enter" || e.key === "Tab") {
+                if (ac.hasSelection()) {
+                    e.preventDefault();
+                    ac.onConfirmCompletion();
+                    return;
+                }
+            }
+            if (e.key === "Escape") {
+                e.preventDefault();
+                ac.onEscape(e.nativeEvent);
+                return;
+            }
+        }
+
         if (e.key === "Enter") {
             e.preventDefault();
             this.onUploadClick();
         }
+    };
+
+    private onConfirmCompletion = (completion: ICompletion): void => {
+        const { caption, mentions } = this.state;
+        const range = completion.range;
+        if (!range || range.start < 0) return;
+
+        const before = caption.slice(0, range.start);
+        const after = caption.slice(range.end);
+        const insertion = completion.completion + (completion.suffix ?? "");
+        const next = before + insertion + after;
+        const caret = before.length + insertion.length;
+
+        const newMentions =
+            completion.type === "user" && completion.completionId
+                ? [...mentions, { userId: completion.completionId, displayName: completion.completion }]
+                : mentions;
+
+        this.setState(
+            { caption: next, selectionStart: caret, selectionEnd: caret, mentions: newMentions },
+            () => {
+                const input = this.inputRef.current;
+                if (input) {
+                    input.focus();
+                    input.setSelectionRange(caret, caret);
+                }
+            },
+        );
     };
 
     public render(): React.ReactNode {
@@ -119,6 +233,8 @@ export default class UploadConfirmDialog extends React.Component<IProps, IState>
             uploadAllButton = <button onClick={this.onUploadAllClick}>{_t("upload_file|upload_all_button")}</button>;
         }
 
+        const { room } = this.props;
+
         return (
             <BaseDialog
                 className="mx_UploadConfirmDialog"
@@ -137,15 +253,32 @@ export default class UploadConfirmDialog extends React.Component<IProps, IState>
                             </div>
                         </div>
                     </div>
-                    <input
-                        type="text"
-                        className="mx_UploadConfirmDialog_caption"
-                        placeholder="Add a caption (optional)"
-                        value={this.state.caption}
-                        onChange={this.onCaptionChange}
-                        onKeyDown={this.onCaptionKeyDown}
-                        autoFocus={false}
-                    />
+                    <div className="mx_UploadConfirmDialog_captionWrapper mx_no_textinput">
+                        <input
+                            type="text"
+                            ref={this.inputRef}
+                            className="mx_UploadConfirmDialog_caption"
+                            placeholder="Add a caption (optional)"
+                            value={this.state.caption}
+                            onChange={this.onCaptionChange}
+                            onSelect={this.onCaptionSelect}
+                            onKeyDown={this.onCaptionKeyDown}
+                            autoFocus={false}
+                        />
+                        {room && (
+                            <Autocomplete
+                                ref={this.autocompleteRef}
+                                query={this.state.caption}
+                                selection={{
+                                    start: this.state.selectionStart,
+                                    end: this.state.selectionEnd,
+                                    beginning: this.state.selectionStart === 0,
+                                }}
+                                onConfirm={this.onConfirmCompletion}
+                                room={room}
+                            />
+                        )}
+                    </div>
                 </div>
 
                 <DialogButtons

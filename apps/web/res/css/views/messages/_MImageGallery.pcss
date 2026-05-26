@@ -177,6 +177,11 @@
             // so captions wrap instead of inflating the bubble.
             max-width: 500px;
             width: fit-content;
+            // Match the negative inline margins that standard EventBubbleTile
+            // applies to .mx_EventTile_line so the bubble visually starts
+            // behind the avatar instead of clearing it.
+            margin-inline-start: var(--EventTile_bubble_line-margin-inline-start, -9px);
+            margin-inline-end: var(--EventTile_bubble_line-margin-inline-end, -12px);
 
             // The bubble border-radius clips corners; strip the grid's own
             .mx_MImageGallery_grid {
@@ -267,6 +272,35 @@
     position: relative;
     z-index: 1;
     padding: 0 var(--gutterSize, 11px);
+}
+
+// -------------------------------------------------------------------------
+// Read receipts (msgOption) row inside a gallery tile
+// -------------------------------------------------------------------------
+
+.mx_EventTile_gallery > .mx_EventTile_msgOption {
+    position: relative;
+    z-index: 2;
+    margin-top: 2px;
+    // Reset the floating 90px-wide hack used by the standard EventTile
+    // group layout — we want the receipts to sit directly under the
+    // bubble and align with its edges.
+    float: none;
+    width: auto;
+    height: auto;
+
+    .mx_ReadReceiptGroup {
+        position: relative;
+        inset: auto;
+    }
+}
+
+.mx_EventTile_gallery[data-self="true"] > .mx_EventTile_msgOption {
+    text-align: right;
+}
+
+.mx_EventTile_gallery[data-self="false"] > .mx_EventTile_msgOption {
+    text-align: left;
 }
 
 // -------------------------------------------------------------------------

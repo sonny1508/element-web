@@ -266,9 +266,13 @@ export default class MessageContextMenu extends React.Component<IProps, IState> 
     };
 
     private onRedactClick = (): void => {
-        const { mxEvent, onCloseDialog } = this.props;
+        const { mxEvent, galleryEvents, onCloseDialog } = this.props;
+        // When invoked from a gallery group, redact every event in the group
+        // (all images and any attached caption) with a single confirmation.
+        const extraEvents = galleryEvents?.filter((e) => e.getId() !== mxEvent.getId());
         createRedactEventDialog({
             mxEvent,
+            extraEvents,
             onCloseDialog,
         });
         this.closeMenu();

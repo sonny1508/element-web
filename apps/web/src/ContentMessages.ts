@@ -51,7 +51,9 @@ import { TimelineRenderingType } from "./contexts/RoomContext";
 import { addReplyToMessageContent } from "./utils/Reply";
 import ErrorDialog from "./components/views/dialogs/ErrorDialog";
 import UploadFailureDialog from "./components/views/dialogs/UploadFailureDialog";
-import UploadConfirmDialog from "./components/views/dialogs/UploadConfirmDialog";
+import UploadConfirmDialog, { type CaptionMention } from "./components/views/dialogs/UploadConfirmDialog";
+import { makeUserPermalink } from "./utils/permalinks/Permalinks";
+import escapeHtml from "escape-html";
 import { createThumbnail } from "./utils/image-media";
 import { attachMentions, attachRelation } from "./utils/messages.ts";
 import { doMaybeLocalRoomAction } from "./utils/local-room";
@@ -492,18 +494,21 @@ export default class ContentMessages {
             const loopPromiseBefore = promBefore;
 
             let caption: string | undefined;
+            let captionMentions: CaptionMention[] | undefined;
             if (!uploadAll) {
                 const { finished } = Modal.createDialog(UploadConfirmDialog, {
                     file,
                     currentIndex: i,
                     totalFiles: okFiles.length,
+                    room: matrixClient.getRoom(roomId) ?? undefined,
                 });
-                const [shouldContinue, shouldUploadAll, dialogCaption] = await finished;
+                const [shouldContinue, shouldUploadAll, dialogCaption, dialogMentions] = await finished;
                 if (!shouldContinue) break;
                 if (shouldUploadAll) {
                     uploadAll = true;
                 }
                 caption = dialogCaption;
+                captionMentions = dialogMentions;
             }
 
             promBefore = doMaybeLocalRoomAction(
@@ -517,6 +522,7 @@ export default class ContentMessages {
                         replyToEvent ?? undefined,
                         loopPromiseBefore,
                         caption,
+                        captionMentions,
                     ),
                 matrixClient,
             );
@@ -564,6 +570,7 @@ export default class ContentMessages {
         replyToEvent: MatrixEvent | undefined,
         promBefore?: Promise<any>,
         caption?: string,
+        captionMentions?: CaptionMention[],
     ): Promise<void> {
         const fileName = file.name || _t("common|attachment");
         const content: Omit<MediaEventContent, "info"> & { info: Partial<MediaEventInfo> } = {
@@ -581,10 +588,33 @@ export default class ContentMessages {
         if (caption) {
             (content as Record<string, unknown>).filename = fileName;
             content.body = caption;
+
+            // If the caption contains @-mentions added via autocomplete, emit a
+            // formatted_body with matrix.to links so receivers render the names
+            // as clickable mention pills.
+            if (captionMentions && captionMentions.length > 0) {
+                let formatted = escapeHtml(caption);
+                for (const m of captionMentions) {
+                    const href = makeUserPermalink(m.userId);
+                    const escapedName = escapeHtml(m.displayName);
+                    const replacement = `<a href="${href}">${escapedName}</a>`;
+                    formatted = formatted.split(escapedName).join(replacement);
+                }
+                (content as Record<string, unknown>).format = "org.matrix.custom.html";
+                (content as Record<string, unknown>).formatted_body = formatted;
+            }
         }
 
         // Attach mentions, which really only applies if there's a replyToEvent.
         attachMentions(matrixClient.getSafeUserId(), content, null, replyToEvent);
+
+        // Add caption-derived user mentions so clients deliver push notifications.
+        if (captionMentions && captionMentions.length > 0) {
+            const mentions = ((content as Record<string, any>)["m.mentions"] ??= {});
+            const existing = new Set<string>(mentions.user_ids ?? []);
+            for (const m of captionMentions) existing.add(m.userId);
+            mentions.user_ids = [...existing];
+        }
         attachRelation(content, relation);
         if (replyToEvent) {
             addReplyToMessageContent(content, replyToEvent);

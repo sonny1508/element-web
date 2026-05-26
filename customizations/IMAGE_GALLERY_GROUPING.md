@@ -13,8 +13,12 @@ MessagePanel.tsx
         ▼  (highest priority — checked first)
   ImageGalleryGrouper (custom)
         │
-        ├── GalleryActionBar  — hover toolbar (Reply, Thread, Options)
-        ├── GalleryTile       — <li> wrapper with hover/context-menu state
+        ├── GalleryTile       — <li> wrapper providing:
+        │                         · sender avatar (MemberAvatar)
+        │                         · hover highlight + action bar (ActionBarWrapper)
+        │                         · right-click MessageContextMenu
+        │                         · ReactionsRowWrapper (per representative event)
+        │                         · ReadReceiptGroup (aggregated across the group)
         └── renders either:
               ├── MImageBody (single image, wrapped in .mx_MImageBody_single)
               └── MImageGallery (2+ images, compact square-cropped grid)
@@ -43,10 +47,12 @@ const groupers = [ImageGalleryGrouper, CreationGrouper, MainGrouper];
 
 | File | Status | Purpose |
 |------|--------|---------|
-| `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx` | **New** | Grouper class + GalleryTile + GalleryActionBar components |
-| `apps/web/src/components/structures/MessagePanel.tsx` | Modified | Import + register ImageGalleryGrouper in groupers array |
+| `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx` | **New** | Grouper class + GalleryTile (avatar, action bar, read receipts, reactions) |
+| `apps/web/src/components/structures/MessagePanel.tsx` | Modified | Register grouper; expose `readReceiptsByEvent`, `readReceiptMap`, and `isUnmounting` for groupers |
 | `apps/web/src/components/views/messages/MImageGallery.tsx` | Pre-existing (heavily modified) | Compact square-cropped grid component |
-| `apps/web/res/css/views/messages/_MImageGallery.pcss` | Modified | All gallery + bubble + action bar styles |
+| `apps/web/res/css/views/messages/_MImageGallery.pcss` | Modified | All gallery styles incl. bubble negative margins + msgOption row |
+| `apps/web/src/components/views/context_menus/MessageContextMenu.tsx` | Modified | `onRedactClick` threads `galleryEvents` into `createRedactEventDialog` as `extraEvents` |
+| `apps/web/src/components/views/dialogs/ConfirmRedactDialog.tsx` | Modified | Accepts `extraEvents` and redacts every event with a single confirmation |
 | `apps/web/src/components/views/dialogs/ForwardDialog.tsx` | Modified | Gallery preview in forward dialog |
 | `apps/web/res/css/views/dialogs/_ForwardDialog.pcss` | Modified | Gallery preview styles in forward dialog |
 
@@ -72,37 +78,44 @@ Wraps the gallery output in an `<li>` that mimics a standard EventTile's DOM str
 
 ```html
 <li class="mx_EventTile mx_EventTile_gallery"
-    data-scroll-tokens="$eventId"
+    data-scroll-tokens="$eventId,$eventId,…"
     data-layout="bubble"
     data-self="true|false">
+
+  <!-- Sender avatar (omitted when mxEvent.sender is missing). Picks up the
+       standard EventBubbleTile positioning because the <li> carries
+       data-layout="bubble". -->
+  <div class="mx_EventTile_avatar">
+    <MemberAvatar size="30px" />
+  </div>
 
   <div class="mx_EventTile_gallery_bubble">
     <!-- MImageBody or MImageGallery -->
     <!-- optional caption -->
   </div>
 
-  <!-- GalleryActionBar (shown on hover or while context menu is open) -->
+  <!-- Read receipts aggregated across every event in the group. -->
+  <div class="mx_EventTile_msgOption">
+    <ReadReceiptGroup ... />
+  </div>
+
+  <!-- ReactionsRowWrapper (when showReactions is enabled) -->
+  <!-- ActionBarWrapper (shown on hover or while focused / context menu open) -->
   <!-- MessageContextMenu (shown on right-click or Options button click) -->
 </li>
 ```
 
 **State managed:**
 - `hover` (boolean) — tracked via `onMouseEnter` / `onMouseLeave`. Controls action bar visibility.
+- `actionBarFocused` (boolean) — set by `<ActionBarWrapper onFocusChange>` so the bar stays visible while a button (e.g. the emoji picker) is open.
 - `contextMenu` (position object | null) — opened by right-click or Options button. When non-null, the action bar also stays visible (prevents flicker when mouse leaves the tile to interact with the menu).
+- `reactions` (Relations | null) — re-fetched via `getRelationsForEvent` whenever `MatrixEventEvent.RelationsCreated` fires on the representative event, so the reactions row updates in place.
 
 **Right-click behavior:** If the click target is an `<img>` element, the native context menu is used (so "Copy image", "Save image as..." etc. work). Otherwise, `MessageContextMenu` is shown.
 
-### GalleryActionBar (functional component)
+### Action bar
 
-A lightweight hover toolbar rendered when `hover || contextMenu` is truthy. Three buttons:
-
-| Button | Icon | Action |
-|--------|------|--------|
-| Reply | `ReplyIcon` | Dispatches `"reply_to_event"` via `defaultDispatcher` with the event and current `timelineRenderingType` from `RoomContext` |
-| Thread | `ThreadsIcon` | Dispatches `Action.ShowThread`. If the event is already part of a thread (but not the root), navigates to the existing thread and scrolls to this event. Otherwise starts a new thread. |
-| Options | `OverflowHorizontalIcon` | Opens `MessageContextMenu` anchored below the button (reuses the same context menu state as right-click) |
-
-Icons are from `@vector-im/compound-design-tokens/assets/web/icons`.
+The gallery reuses the standard `<ActionBarWrapper>` from `EventTile.tsx` instead of a bespoke toolbar — this gives it the same Reply / React / Edit / Options affordances as text bubbles, kept in sync with upstream automatically. `GalleryTile` renders it when `hover || actionBarFocused || contextMenu` is truthy. The wrapper receives `galleryEvents` so the Options menu's Forward and Remove actions can fan out across the whole group; `getTile` and `getReplyChain` are stubbed to `() => null` because the gallery doesn't expose a `TileShape`-style ref.
 
 ### MImageGallery (grid component)
 
@@ -169,8 +182,9 @@ All styles live in `apps/web/res/css/views/messages/_MImageGallery.pcss`.
   &[data-self="true"]              — right-aligned, self background
   &[data-self="false"]             — left-aligned, others background
 
-.mx_GalleryActionBar               — hover toolbar
-  .mx_GalleryActionBar_button      — individual toolbar button
+.mx_EventTile_avatar               — sender avatar (positioned by EventBubbleTile rules)
+.mx_EventTile_msgOption            — ReadReceiptGroup row under the bubble
+.mx_MessageActionBar               — standard hover toolbar (Reply/React/Edit/Options)
 ```
 
 ### Bubble layout specifics
@@ -181,7 +195,9 @@ The bubble layout requires careful z-index layering:
 |---------|---------|---------|
 | `::before` (hover) | 0 | Full-width hover highlight background |
 | `.mx_EventTile_gallery_bubble` | 1 | Bubble sits above hover highlight |
-| `.mx_GalleryActionBar` | 10 | Toolbar floats above everything |
+| `.mx_EventTile_msgOption` | 2 | Read receipts row stays clickable above bubble |
+| `.mx_MessageActionBar` | (default) | Toolbar floats above everything via standard EventTile rules |
+| `.mx_EventTile_avatar` | 9 | Sits over the bubble corner per EventBubbleTile defaults |
 
 **Why z-index: 0 instead of -1 for the hover highlight:**
 Standard EventBubbleTile uses `z-index: -1` on its `::before` hover highlight. This breaks inside thread reply views because thread panels use `overflow: hidden` which creates a new stacking context — a `z-index: -1` pseudo-element gets pushed behind the parent's background and becomes invisible. The gallery uses `z-index: 0` for the highlight and `z-index: 1` for the bubble content, keeping everything in the same stacking context.
@@ -189,6 +205,10 @@ Standard EventBubbleTile uses `z-index: -1` on its `::before` hover highlight. T
 ### Bubble width constraint
 
 The bubble (`.mx_EventTile_gallery_bubble`) has `max-width: 500px` (content-box) and `width: fit-content`. This caps the content area to exactly match the grid width so that captions wrap within the bubble rather than inflating it. Element does **not** use a global `box-sizing: border-box` rule, so the 500px applies to the content area; the total bubble width including padding is 500 + 2 × 11 = 522px.
+
+### Bubble negative inline margins
+
+`.mx_EventTile_gallery_bubble` carries `margin-inline-start: var(--EventTile_bubble_line-margin-inline-start, -9px)` and `margin-inline-end: var(--EventTile_bubble_line-margin-inline-end, -12px)`. These mirror the negative margins that standard EventBubbleTile applies to `.mx_EventTile_line`, so the bubble visually overlaps the avatar area on the sender side instead of sitting flush against the `<li>`'s margin edge. Without these, the bubble appeared offset to the right of where the avatar sits.
 
 ### Padding model
 
@@ -217,6 +237,38 @@ The `!important` declarations are necessary because MImageBody sets inline style
 ## Interaction with other groupers
 
 `ImageGalleryGrouper` is checked first (index 0 in the `groupers` array). If it claims an event, `CreationGrouper` and `MainGrouper` never see it. If an image event doesn't start a new group (e.g., `shouldShow` is false), it falls through to the next grouper.
+
+## Sender avatar
+
+`GalleryTile` renders a `<MemberAvatar size="30px">` inside a `.mx_EventTile_avatar` wrapper as the first child of the `<li>`. Because the `<li>` carries `data-layout="bubble"`, the standard `.mx_EventTile[data-layout="bubble"] .mx_EventTile_avatar` rules from `_EventBubbleTile.pcss` apply — namely `position: absolute; top: 6px; left: -36px` (others) or `top: -19px; right: -38px` (self). No gallery-specific overrides are needed; the bubble's negative inline margins (see "Bubble negative inline margins" above) cause the bubble to extend behind the avatar so the avatar visually overlaps the bubble corner, matching the standard text-bubble look.
+
+## Read receipts
+
+`GalleryTile` aggregates read receipts across every event in the gallery group and renders a single `<ReadReceiptGroup>` below the bubble. The collection logic lives in `getTiles()`:
+
+```ts
+if (this.panel.props.showReadReceipts) {
+    const seen = new Set<string>();
+    galleryReceipts = [];
+    for (const ev of imageEvents) {
+        const r = this.panel.readReceiptsByEvent.get(ev.getId()!);
+        for (const receipt of r ?? []) {
+            if (seen.has(receipt.userId)) continue;
+            seen.add(receipt.userId);
+            galleryReceipts.push(receipt);
+        }
+    }
+    galleryReceipts.sort((a, b) => b.ts - a.ts);
+}
+```
+
+`MessagePanel.readReceiptsByEvent`, `MessagePanel.readReceiptMap`, and `MessagePanel.isUnmounting` are `public` (not `private`) precisely so custom groupers like this one can render their own receipts UI. Each receipt only appears once per gallery even if MessagePanel's per-event map happens to bind it to more than one image in the group.
+
+The receipts are wrapped in `<div class="mx_EventTile_msgOption">` so the standard `mx_EventTile_msgOption` styles apply, then gallery-specific CSS (`_MImageGallery.pcss`) resets the 90px-wide float used by the standard group layout and right-aligns the row for self messages, left-aligns for others.
+
+## Remove redacts the whole group
+
+When the user picks **Remove** from the gallery's context menu (right-click or Options button), `MessageContextMenu.onRedactClick` notices the menu was opened with `galleryEvents` and passes the full set as `extraEvents` to `createRedactEventDialog`. The dialog still asks for a single confirmation (and optional reason), but on accept it calls `cli.redactEvent` for every unique event in the group — all images plus whichever image carried the caption — in parallel. This avoids the previous behaviour where Remove only redacted the representative event, leaving the rest of the group (and the caption) orphaned in the timeline.
 
 ## Gallery forwarding
 

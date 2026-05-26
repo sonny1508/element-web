@@ -235,7 +235,9 @@ export default class MessagePanel extends React.Component<IProps, IState> {
 
     // opaque readreceipt info for each userId; used by ReadReceiptMarker
     // to manage its animations
-    private readReceiptMap: { [userId: string]: IReadReceiptPosition } = {};
+    // Exposed publicly so custom groupers (e.g. ImageGalleryGrouper) can render
+    // ReadReceiptGroup for the events they aggregate.
+    public readReceiptMap: { [userId: string]: IReadReceiptPosition } = {};
 
     // Track read receipts by event ID. For each _shown_ event ID, we store
     // the list of read receipts to display:
@@ -249,7 +251,9 @@ export default class MessagePanel extends React.Component<IProps, IState> {
     // This is recomputed on each render. It's only stored on the component
     // for ease of passing the data around since it's computed in one pass
     // over all events.
-    private readReceiptsByEvent: Map<string, IReadReceiptProps[]> = new Map();
+    // Exposed publicly so custom groupers can look up receipts for the events
+    // they aggregate.
+    public readReceiptsByEvent: Map<string, IReadReceiptProps[]> = new Map();
 
     // Track read receipts by user ID. For each user ID we've ever shown a
     // a read receipt for, we store an object:
@@ -471,7 +475,7 @@ export default class MessagePanel extends React.Component<IProps, IState> {
         }
     }
 
-    private isUnmounting = (): boolean => {
+    public isUnmounting = (): boolean => {
         return this.unmounted;
     };
 

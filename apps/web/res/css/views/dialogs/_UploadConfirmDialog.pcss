@@ -5,6 +5,13 @@ SPDX-License-Identifier: AGPL-3.0-only OR GPL-3.0-only OR LicenseRef-Element-Com
 Please see LICENSE files in the repository root for full details.
 */
 
+// Give the dialog a comfortable fixed width so the caption editor has room
+// to breathe; matches the size of mx_ForwardDialog.
+.mx_UploadConfirmDialog {
+    width: 520px;
+    max-width: 100%;
+}
+
 .mx_UploadConfirmDialog_fileIcon {
     margin-right: 5px;
 }
@@ -25,7 +32,29 @@ Please see LICENSE files in the repository root for full details.
     border: 1px solid $dialog-close-fg-color;
 }
 
-input.mx_UploadConfirmDialog_caption {
+// Container for caption input + autocomplete dropdown. The dropdown's
+// default styling pins it to bottom: 0 of its containing block, so we
+// give the wrapper position: relative and override the dropdown to
+// appear directly above the input.
+.mx_UploadConfirmDialog_captionWrapper {
+    position: relative;
+
+    > .mx_Autocomplete {
+        bottom: 100%;
+        margin-bottom: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        border-radius: 8px;
+        border: 1px solid $primary-hairline-color;
+    }
+}
+
+// Specificity is bumped via .mx_Dialog so this rule wins over the global
+// `.mx_Dialog ... > input[type="text"]` rule in _common.pcss, which
+// otherwise forces the text color to $input-darker-fg-color and the
+// placeholder to $input-placeholder — visually swapping our intended
+// bright caption / dim placeholder.
+.mx_Dialog input.mx_UploadConfirmDialog_caption {
     display: block;
     width: 100%;
     margin-top: 12px;

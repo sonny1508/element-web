@@ -17,13 +17,16 @@ import { type WrappedEvent } from "../MessagePanel";
 import { BaseGrouper } from "./BaseGrouper";
 import MImageGallery from "../../views/messages/MImageGallery";
 import MImageBody from "../../views/messages/MImageBody";
+import MemberAvatar from "../../views/avatars/MemberAvatar";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import MessageContextMenu from "../../views/context_menus/MessageContextMenu";
 import { aboveRightOf } from "../ContextMenu";
 import { type RoomPermalinkCreator } from "../../../utils/permalinks/Permalinks";
 import { type Layout } from "../../../settings/enums/Layout";
 import { TimelineRenderingType } from "../../../contexts/RoomContext";
-import { type GetRelationsForEvent, ReactionsRowWrapper, ActionBarWrapper } from "../../views/rooms/EventTile";
+import { type GetRelationsForEvent, ReactionsRowWrapper, ActionBarWrapper, type IReadReceiptProps } from "../../views/rooms/EventTile";
+import { type IReadReceiptPosition } from "../../views/rooms/ReadReceiptMarker";
+import { ReadReceiptGroup } from "../../views/rooms/ReadReceiptGroup";
 import { registerGalleryForThread, getGalleryForThread } from "./galleryThreadRegistry";
 
 /**
@@ -41,7 +44,8 @@ function isImageMessage(ev: MatrixEvent): boolean {
 const MAX_GAP_MS = 10_000; // 10 seconds
 
 // -------------------------------------------------------------------------
-// GalleryTile — lightweight wrapper providing hover + context menu
+// GalleryTile — wrapper providing avatar, hover highlight, action bar,
+// context menu, and read receipts for the aggregated gallery events.
 // -------------------------------------------------------------------------
 
 interface GalleryTileProps {
@@ -56,17 +60,18 @@ interface GalleryTileProps {
     permalinkCreator?: RoomPermalinkCreator;
     showReactions?: boolean;
     getRelationsForEvent?: GetRelationsForEvent;
+    /** Read receipts aggregated across every event in the gallery. */
+    readReceipts?: IReadReceiptProps[];
+    readReceiptMap?: { [userId: string]: IReadReceiptPosition };
+    checkUnmounting?: () => boolean;
+    isTwelveHour?: boolean;
     children: ReactNode;
 }
-
-// -------------------------------------------------------------------------
-// GalleryTile — wrapper providing hover highlight, action bar & context menu
-// -------------------------------------------------------------------------
 
 const noop = (): void => {};
 const returnNull = (): null => null;
 
-function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, children }: GalleryTileProps): ReactNode {
+function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, readReceipts, readReceiptMap, checkUnmounting, isTwelveHour, children }: GalleryTileProps): ReactNode {
     const [hover, setHover] = useState(false);
     const [actionBarFocused, setActionBarFocused] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ left: number; top: number; bottom: number } | null>(null);
@@ -119,7 +124,23 @@ function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent,
             onMouseEnter={() => setHover(true)}
             onMouseLeave={() => setHover(false)}
         >
+            {mxEvent.sender && (
+                <div className="mx_EventTile_avatar">
+                    <MemberAvatar member={mxEvent.sender} size="30px" viewUserOnClick={true} />
+                </div>
+            )}
             {children}
+            {readReceipts && readReceipts.length > 0 && readReceiptMap && (
+                <div className="mx_EventTile_msgOption">
+                    <ReadReceiptGroup
+                        readReceipts={readReceipts}
+                        readReceiptMap={readReceiptMap}
+                        checkUnmounting={checkUnmounting}
+                        suppressAnimation={false}
+                        isTwelveHour={isTwelveHour}
+                    />
+                </div>
+            )}
             {showReactions && (
                 <div className="mx_EventTile_footer">
                     <ReactionsRowWrapper mxEvent={mxEvent} reactions={reactions} />
@@ -286,6 +307,25 @@ export class ImageGalleryGrouper extends BaseGrouper {
         // this tile regardless of which gallery event it is tracking.
         const scrollTokens = imageEvents.map((ev) => ev.getId()!).join(",");
 
+        // Collect read receipts for every event in the gallery, deduping by
+        // userId so we don't render the same avatar multiple times. Receipts
+        // are computed once per render by MessagePanel.getReadReceiptsByShownEvent.
+        let galleryReceipts: IReadReceiptProps[] | undefined;
+        if (this.panel.props.showReadReceipts) {
+            const seen = new Set<string>();
+            galleryReceipts = [];
+            for (const ev of imageEvents) {
+                const r = this.panel.readReceiptsByEvent.get(ev.getId()!);
+                if (!r) continue;
+                for (const receipt of r) {
+                    if (seen.has(receipt.userId)) continue;
+                    seen.add(receipt.userId);
+                    galleryReceipts.push(receipt);
+                }
+            }
+            galleryReceipts.sort((a, b) => b.ts - a.ts);
+        }
+
         return [
             <GalleryTile
                 key={`gallery-${firstEventId}`}
@@ -297,6 +337,10 @@ export class ImageGalleryGrouper extends BaseGrouper {
                 permalinkCreator={this.panel.props.permalinkCreator}
                 showReactions={this.panel.props.showReactions}
                 getRelationsForEvent={this.panel.props.getRelationsForEvent}
+                readReceipts={galleryReceipts}
+                readReceiptMap={this.panel.readReceiptMap}
+                checkUnmounting={this.panel.isUnmounting}
+                isTwelveHour={this.panel.props.isTwelveHour}
             >
                 <div className="mx_EventTile_gallery_bubble">
                     {mediaContent}
