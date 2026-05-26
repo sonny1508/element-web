@@ -93,8 +93,9 @@ Please see LICENSE files in the repository root for full details.
     }
 }
 
-/* ended polls are no longer actionable; checked options remain clickable so the
-   user can click their selected option again to un-vote */
+/* options not actionable in these states (un-vote is handled by a dedicated
+   "Undo vote" button rendered next to the totals row, not by clicking the option) */
+.mx_PollOption_checked,
 .mx_PollOption_ended {
     pointer-events: none;
 }

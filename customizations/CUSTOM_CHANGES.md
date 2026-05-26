@@ -90,7 +90,7 @@ See `customizations/IMAGE_GALLERY_GROUPING.md` for full architecture documentati
 
 - `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx` *(new)*
   - `BaseGrouper` subclass that groups consecutive same-sender `m.image` events
-  - `GalleryTile` wrapper component: `<li>` with sender avatar (`MemberAvatar`), hover state, context menu, action bar wrapper (reactions + standard buttons), and `ReadReceiptGroup` aggregated across all events in the group
+  - `GalleryTile` wrapper component: `<li>` with sender avatar (`MemberAvatar`), `SenderProfile` (hidden in DMs via `panel.state.hideSender`, hidden for self via existing EventBubbleTile CSS), hover state, context menu, action bar wrapper (reactions + standard buttons), and `ReadReceiptGroup` aggregated across all events in the group
   - Renders `MImageBody` (single image) or `MImageGallery` grid (2+ images), both inside a `.mx_EventTile_gallery_bubble` wrapper
   - Scans all images for caption (not just last) to handle "Upload All" case
   - Passes `galleryEvents` to `MessageContextMenu` so the Forward and Remove actions act on the entire group

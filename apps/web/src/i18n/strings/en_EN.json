@@ -1801,6 +1801,8 @@
         "topic_heading": "What is your poll question or topic?",
         "topic_label": "Question or topic",
         "topic_placeholder": "Write something…",
+        "undo_vote": "Undo vote",
+        "undo_vote_aria": "Undo your vote in this poll",
         "total_decryption_errors": "Due to decryption errors, some votes may not be counted",
         "total_n_votes": {
             "one": "%(count)s vote cast. Vote to see the results",

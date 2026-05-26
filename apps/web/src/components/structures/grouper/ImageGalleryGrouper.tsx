@@ -18,6 +18,7 @@ import { BaseGrouper } from "./BaseGrouper";
 import MImageGallery from "../../views/messages/MImageGallery";
 import MImageBody from "../../views/messages/MImageBody";
 import MemberAvatar from "../../views/avatars/MemberAvatar";
+import SenderProfile from "../../views/messages/SenderProfile";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import MessageContextMenu from "../../views/context_menus/MessageContextMenu";
 import { aboveRightOf } from "../ContextMenu";
@@ -65,13 +66,15 @@ interface GalleryTileProps {
     readReceiptMap?: { [userId: string]: IReadReceiptPosition };
     checkUnmounting?: () => boolean;
     isTwelveHour?: boolean;
+    /** Hide the sender name row (true in DMs, ≤2 members) — mirrors MessagePanel.shouldHideSender. */
+    hideSender?: boolean;
     children: ReactNode;
 }
 
 const noop = (): void => {};
 const returnNull = (): null => null;
 
-function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, readReceipts, readReceiptMap, checkUnmounting, isTwelveHour, children }: GalleryTileProps): ReactNode {
+function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, readReceipts, readReceiptMap, checkUnmounting, isTwelveHour, hideSender, children }: GalleryTileProps): ReactNode {
     const [hover, setHover] = useState(false);
     const [actionBarFocused, setActionBarFocused] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ left: number; top: number; bottom: number } | null>(null);
@@ -120,6 +123,7 @@ function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent,
             data-scroll-tokens={scrollTokens}
             data-layout={layout}
             data-self={isOwnEvent}
+            data-hide-sender={hideSender ? "true" : undefined}
             onContextMenu={onContextMenu}
             onMouseEnter={() => setHover(true)}
             onMouseLeave={() => setHover(false)}
@@ -129,6 +133,19 @@ function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent,
                     <MemberAvatar member={mxEvent.sender} size="30px" viewUserOnClick={true} />
                 </div>
             )}
+            {/*
+                Always render the SenderProfile so the row reserves vertical
+                space — that keeps the bubble offset down by ~19px and lets the
+                avatar's standard `top: 6px` position line up with the top of
+                the bubble. In DMs (data-hide-sender="true") we then visually
+                hide the name via CSS while preserving the layout space; for
+                own messages the upstream EventBubbleTile CSS already hides
+                `.mx_DisambiguatedProfile` via `display: none`, which collapses
+                the row — that's fine because self messages use `top: -19px`
+                on the avatar (it floats above the bubble) and don't need the
+                offset.
+            */}
+            <SenderProfile mxEvent={mxEvent} />
             {children}
             {readReceipts && readReceipts.length > 0 && readReceiptMap && (
                 <div className="mx_EventTile_msgOption">
@@ -341,6 +358,7 @@ export class ImageGalleryGrouper extends BaseGrouper {
                 readReceiptMap={this.panel.readReceiptMap}
                 checkUnmounting={this.panel.isUnmounting}
                 isTwelveHour={this.panel.props.isTwelveHour}
+                hideSender={this.panel.state.hideSender}
             >
                 <div className="mx_EventTile_gallery_bubble">
                     {mediaContent}

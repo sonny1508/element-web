@@ -254,6 +254,17 @@
         &[data-self="false"] {
             margin-inline-end: auto;
         }
+
+        // DM (hideSender=true): keep the sender-name row taking layout space
+        // so the bubble still drops below the avatar's vertical centre, but
+        // hide the name itself. We deliberately diverge from upstream's
+        // `mx_EventTile_noSender` behaviour (which collapses the row + bumps
+        // the avatar to top: -19px) so the DM gallery bubble aligns the same
+        // way as a group bubble. `visibility: hidden` preserves the box
+        // dimensions; `display: none` would collapse them.
+        &[data-hide-sender="true"] > .mx_DisambiguatedProfile {
+            visibility: hidden;
+        }
     }
 }
 

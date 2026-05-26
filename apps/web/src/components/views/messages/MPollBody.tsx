@@ -37,6 +37,7 @@ import { type GetRelationsForEvent } from "../rooms/EventTile";
 import PollCreateDialog from "../elements/PollCreateDialog";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import Spinner from "../elements/Spinner";
+import AccessibleButton from "../elements/AccessibleButton";
 import { PollOption } from "../polls/PollOption";
 
 interface IState {
@@ -217,12 +218,23 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
         const userVotes = this.collectUserVotes();
         const userId = this.context.getSafeUserId();
         const myVote = userVotes.get(userId)?.answers[0];
-        // Clicking the already-selected option un-votes by sending a spoiled (empty) response.
-        const isUnvote = answerId === myVote;
-        const answers = isUnvote ? [] : [answerId];
+        if (answerId === myVote) {
+            return;
+        }
 
+        this.sendAnswers([answerId]);
+    }
+
+    private undoVote = (): void => {
+        if (this.state.poll?.isEnded) return;
+        const userId = this.context.getSafeUserId();
+        const myVote = this.collectUserVotes().get(userId)?.answers[0];
+        if (!myVote) return; // nothing to undo
+        this.sendAnswers([]);
+    };
+
+    private sendAnswers(answers: string[]): void {
         const response = PollResponseEvent.from(answers, this.props.mxEvent.getId()!).serialize();
-
         this.context
             .sendEvent(
                 this.props.mxEvent.getRoomId()!,
@@ -231,13 +243,11 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
             )
             .catch((e: any) => {
                 console.error("Failed to submit poll response event:", e);
-
                 Modal.createDialog(ErrorDialog, {
                     title: _t("poll|error_voting_title"),
                     description: _t("poll|error_voting_description"),
                 });
             });
-
         this.setState({ selected: answers });
     }
 
@@ -386,6 +396,16 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
                 <div data-testid="totalVotes" className="mx_MPollBody_totalVotes">
                     {totalText}
                     {isFetchingResponses && <Spinner size={16} />}
+                    {!poll.isEnded && myVote !== undefined && (
+                        <AccessibleButton
+                            kind="link_inline"
+                            className="mx_MPollBody_undoVote"
+                            onClick={this.undoVote}
+                            aria-label={_t("poll|undo_vote_aria")}
+                        >
+                            {_t("poll|undo_vote")}
+                        </AccessibleButton>
+                    )}
                 </div>
             </fieldset>
         );

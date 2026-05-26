@@ -48,7 +48,7 @@ const groupers = [ImageGalleryGrouper, CreationGrouper, MainGrouper];
 | File | Status | Purpose |
 |------|--------|---------|
 | `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx` | **New** | Grouper class + GalleryTile (avatar, action bar, read receipts, reactions) |
-| `apps/web/src/components/structures/MessagePanel.tsx` | Modified | Register grouper; expose `readReceiptsByEvent`, `readReceiptMap`, and `isUnmounting` for groupers |
+| `apps/web/src/components/structures/MessagePanel.tsx` | Modified | Register grouper; expose `readReceiptsByEvent`, `readReceiptMap`, and `isUnmounting` for groupers. `state.hideSender` is consumed via the panel reference (no API change needed). |
 | `apps/web/src/components/views/messages/MImageGallery.tsx` | Pre-existing (heavily modified) | Compact square-cropped grid component |
 | `apps/web/res/css/views/messages/_MImageGallery.pcss` | Modified | All gallery styles incl. bubble negative margins + msgOption row |
 | `apps/web/src/components/views/context_menus/MessageContextMenu.tsx` | Modified | `onRedactClick` threads `galleryEvents` into `createRedactEventDialog` as `extraEvents` |
@@ -88,6 +88,17 @@ Wraps the gallery output in an `<li>` that mimics a standard EventTile's DOM str
   <div class="mx_EventTile_avatar">
     <MemberAvatar size="30px" />
   </div>
+
+  <!-- Sender name row. ALWAYS rendered so it reserves vertical space; the
+       bubble drops below it and the avatar's vertical centre lines up with
+       the top of the bubble — same as standard text bubbles.
+       · For own messages: upstream `&[data-self="true"] .mx_DisambiguatedProfile`
+         rule collapses the row via `display: none` (self avatar uses top: -19px
+         and doesn't want the offset).
+       · For DMs (data-hide-sender="true"): gallery-specific CSS uses
+         `visibility: hidden`, hiding the name visually but keeping the
+         layout space so the offset stays. -->
+  <SenderProfile mxEvent={...} />
 
   <div class="mx_EventTile_gallery_bubble">
     <!-- MImageBody or MImageGallery -->
@@ -238,9 +249,27 @@ The `!important` declarations are necessary because MImageBody sets inline style
 
 `ImageGalleryGrouper` is checked first (index 0 in the `groupers` array). If it claims an event, `CreationGrouper` and `MainGrouper` never see it. If an image event doesn't start a new group (e.g., `shouldShow` is false), it falls through to the next grouper.
 
-## Sender avatar
+## Sender avatar and sender name
 
-`GalleryTile` renders a `<MemberAvatar size="30px">` inside a `.mx_EventTile_avatar` wrapper as the first child of the `<li>`. Because the `<li>` carries `data-layout="bubble"`, the standard `.mx_EventTile[data-layout="bubble"] .mx_EventTile_avatar` rules from `_EventBubbleTile.pcss` apply — namely `position: absolute; top: 6px; left: -36px` (others) or `top: -19px; right: -38px` (self). No gallery-specific overrides are needed; the bubble's negative inline margins (see "Bubble negative inline margins" above) cause the bubble to extend behind the avatar so the avatar visually overlaps the bubble corner, matching the standard text-bubble look.
+`GalleryTile` renders three layout pieces that all reuse the upstream `EventBubbleTile` styling:
+
+1. **Avatar:** `<MemberAvatar size="30px">` inside a `.mx_EventTile_avatar` wrapper as the first child of the `<li>`. Because the `<li>` carries `data-layout="bubble"`, the standard `.mx_EventTile[data-layout="bubble"] .mx_EventTile_avatar` rules from `_EventBubbleTile.pcss` apply — namely `position: absolute; top: 6px; left: -36px` (others) or `top: -19px; right: -38px` (self). No gallery-specific overrides are needed.
+2. **Sender name:** `<SenderProfile mxEvent>` rendered when `!hideSender`. The existing `.mx_EventTile[data-layout="bubble"][data-self="true"] .mx_DisambiguatedProfile { display: none }` rule hides it for own messages, so the grouper does not have to branch on `isOwnEvent` itself. The `> .mx_DisambiguatedProfile { position: relative; top: -2px }` rule (also from `_EventBubbleTile.pcss`) is what lifts the name into its standard position above the bubble.
+3. **Bubble:** `.mx_EventTile_gallery_bubble` with the negative inline margins described above so it visually overlaps the avatar's inner edge.
+
+The `hideSender` prop comes straight from `MessagePanel.state.hideSender`, which is set true when `room.getInvitedAndJoinedMemberCount() <= 2 && layout === Layout.Bubble` (i.e. DMs). That mirrors the upstream rule — no duplicate logic.
+
+**Why this fixes the others-bubble vertical offset:** before the sender name was rendered, the bubble started at the top of the `<li>` while the avatar (positioned via standard rules for *text* bubbles, which assume a sender name above) sat with its top at `y=6`. Visually the avatar landed alongside the very top edge of the bubble. With the sender name back in place, the bubble drops by ~19px (the name row's height) and the avatar's vertical centre lines up with the top of the bubble — exactly how upstream text bubbles look.
+
+### DMs: keep the offset, hide just the name
+
+In a DM we want the *same* bubble layout as a group room — bubble sitting below where the sender name would be, avatar's vertical centre on the bubble's top — only without the visible name. This is a **deliberate divergence from upstream**, which collapses the row entirely in DMs (via `mx_EventTile_noSender`) and floats the avatar above the bubble at `top: -19px`. For the gallery the bubble-bottom-of-avatar look reads better in DMs too, so we preserve it.
+
+Implementation:
+
+1. `GalleryTile` always renders `<SenderProfile>`, regardless of `hideSender`. For own messages the existing `_EventBubbleTile.pcss` rule `&[data-self="true"] .mx_DisambiguatedProfile { display: none }` collapses the row — which is fine, because the self avatar already uses `top: -19px` and doesn't want the offset.
+2. The `<li>` carries `data-hide-sender="true"` whenever `hideSender` is true.
+3. `_MImageGallery.pcss` adds `&[data-hide-sender="true"] > .mx_DisambiguatedProfile { visibility: hidden }`. `visibility: hidden` preserves the box dimensions, so the bubble still drops by the row's height; only the rendered text/avatar disappear. Using `display: none` here would collapse the row and break the offset — that's why upstream's `mx_EventTile_noSender` class is **not** applied to gallery tiles.
 
 ## Read receipts
 
