@@ -306,6 +306,23 @@
     }
 }
 
+// _EventTile.pcss carries a (0,4,0)-specificity rule that forces
+// .mx_ReadReceiptGroup inside any .mx_EventTile[data-layout="bubble"]
+// to position: absolute with inset-inline-end: -78px, pushing it 78px
+// past the bubble's right edge and off-screen in the narrow thread panel.
+// Our selector above is only (0,3,0) and loses.  Add a (0,5,0) rule that
+// explicitly resets every inset logical/physical property so the receipt
+// stays in its natural (relative) position under the bubble.
+.mx_EventTile.mx_EventTile_gallery[data-layout="bubble"] > .mx_EventTile_msgOption {
+    .mx_ReadReceiptGroup {
+        position: relative;
+        inset-block-start: auto;
+        inset-block-end: auto;
+        inset-inline-start: auto;
+        inset-inline-end: auto;
+    }
+}
+
 .mx_EventTile_gallery[data-self="true"] > .mx_EventTile_msgOption {
     text-align: right;
 }
@@ -320,4 +337,21 @@
 
 .mx_EventTile_gallery .mx_MessageActionBar {
     right: 0;
+}
+
+// In thread view, _EventTile.pcss applies:
+//   .mx_ThreadView .mx_EventTile[data-layout="bubble"] { margin-inline: 36px }
+// with (0,3,0) specificity, which overrides our (0,3,0) gallery rule that
+// sets margin-inline-end: auto for others' messages (last-write wins and
+// _EventTile.pcss loads after us).  Without the auto right margin, the
+// gallery <li> stretches to the full thread-panel width as a flex item.
+// The action bar is then positioned at inset-inline-start: calc(100%…)
+// relative to that full-width <li>, placing it far to the right of the
+// left-aligned bubble — visually the "context menu/action bar offset" the
+// user reports.  Own messages are unaffected because align-items: flex-end
+// on the thread container right-aligns the bubble to match the right edge.
+// Bump specificity to (0,5,0) so margin-inline-end: auto is preserved in
+// thread view, keeping the <li> shrunk to content-width (= bubble width).
+.mx_EventTile.mx_EventTile_gallery[data-layout="bubble"][data-self="false"] {
+    margin-inline-end: auto;
 }
