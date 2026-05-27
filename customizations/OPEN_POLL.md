@@ -12,10 +12,13 @@ After the user votes, a small "Undo vote" link appears in the totals row (right-
 - We **don't** repurpose clicking on the selected option to un-vote: a radio's `<label>` wraps its `<input>`, so a single click fires multiple handlers (input onChange, input click bubble, label click bubble) and races with the local-echo state update, causing a vote+unvote round-trip on the same click. Selected options keep `pointer-events: none` as in upstream.
 
 ### 2. Voter avatars per option
-Each option now shows a row of avatars (via `FacePile`) of the room members who voted for it. Built from the same `userVotes` map used for counts, so local-echo (including un-votes) flows through.
+Each option shows a row of avatars (via `FacePile`) of the members who voted for it. Built from the same `userVotes` map used for counts, so local-echo (including un-votes) flows through.
 
 - Only rendered for disclosed polls.
-- Avatar row stops click propagation so clicking an avatar doesn't accidentally toggle the vote.
+- Hovering an avatar shows the user's name (FacePile's default per-avatar `Tooltip`).
+- Clicking the avatar row opens a `ContextMenu` listing all voters for that option (avatar + display name). This replaces the default "open user profile" behavior — the list is the only interaction.
+- Tooltips and the click-to-list menu work on **ended** polls too: the voters row sets `pointer-events: auto` to override the `pointer-events: none` that `mx_PollOption_ended` (and `mx_PollOption_checked`) applies to the option as a whole.
+- Avatar row stops click propagation so clicking doesn't toggle the vote.
 
 ### 3. Results visible without voting
 For disclosed polls, results (counts, percentages, voter avatars) are visible to everyone regardless of whether they've voted. Undisclosed polls still hide results until the poll ends.

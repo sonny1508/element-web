@@ -1803,6 +1803,11 @@
         "topic_placeholder": "Write something…",
         "undo_vote": "Undo vote",
         "undo_vote_aria": "Undo your vote in this poll",
+        "voters_for_option": {
+            "one": "%(count)s person voted for this option",
+            "other": "%(count)s people voted for this option"
+        },
+        "voters_show_aria": "Show who voted for this option",
         "total_decryption_errors": "Due to decryption errors, some votes may not be counted",
         "total_n_votes": {
             "one": "%(count)s vote cast. Vote to see the results",

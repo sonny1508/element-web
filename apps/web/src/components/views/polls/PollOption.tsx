@@ -16,6 +16,8 @@ import { _t } from "../../../languageHandler";
 import { Icon as TrophyIcon } from "../../../../res/img/element-icons/trophy.svg";
 import StyledRadioButton from "../elements/StyledRadioButton";
 import FacePile from "../elements/FacePile";
+import MemberAvatar from "../avatars/MemberAvatar";
+import ContextMenu, { aboveLeftOf, useContextMenu } from "../../structures/ContextMenu";
 
 type PollOptionContentProps = {
     answer: PollAnswerSubevent;
@@ -140,14 +142,53 @@ export const PollOption: React.FC<PollOptionProps> = ({
                 <div className="mx_PollOption_popularityAmount" style={{ width: `${answerPercent}%` }} />
             </div>
             {voters && voters.length > 0 && (
-                <div
-                    className="mx_PollOption_voters"
-                    onClick={(e) => e.stopPropagation()}
-                    role="presentation"
-                >
-                    <FacePile members={voters} size="20px" overflow={false} />
+                <div className="mx_PollOption_voters" onClick={(e) => e.stopPropagation()} role="presentation">
+                    <PollVotersFacePile voters={voters} />
                 </div>
             )}
+        </div>
+    );
+};
+
+const PollVotersFacePile: React.FC<{ voters: RoomMember[] }> = ({ voters }) => {
+    const [menuDisplayed, button, openMenu, closeMenu] = useContextMenu<HTMLDivElement>();
+
+    let contextMenu: ReactNode = null;
+    if (menuDisplayed && button.current) {
+        const rect = button.current.getBoundingClientRect();
+        contextMenu = (
+            <ContextMenu
+                menuClassName="mx_PollOption_votersMenu"
+                onFinished={closeMenu}
+                {...aboveLeftOf(rect)}
+            >
+                <h3 className="mx_PollOption_votersMenu_title">
+                    {_t("poll|voters_for_option", { count: voters.length })}
+                </h3>
+                <ul className="mx_PollOption_votersMenu_list" role="menu">
+                    {voters.map((m) => (
+                        <li key={m.userId} className="mx_PollOption_votersMenu_person" role="menuitem">
+                            <MemberAvatar member={m} size="24px" viewUserOnClick={false} hideTitle />
+                            <span className="mx_PollOption_votersMenu_name">{m.name}</span>
+                        </li>
+                    ))}
+                </ul>
+            </ContextMenu>
+        );
+    }
+
+    return (
+        <div ref={button}>
+            <FacePile
+                members={voters}
+                size="20px"
+                overflow={false}
+                viewUserOnClick={false}
+                aria-haspopup="true"
+                aria-label={_t("poll|voters_show_aria")}
+                onClick={openMenu}
+            />
+            {contextMenu}
         </div>
     );
 };
