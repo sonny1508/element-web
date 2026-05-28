@@ -140,7 +140,12 @@
         --cornerRadius: 12px;
         --gutterSize: 11px;
 
-        max-width: 70%;
+        // No max-width / margin-inline: auto here — the <li> must be full-width
+        // (same as standard EventBubbleTile) so that mx_EventTile_msgOption's
+        // read-receipt anchors to the full-width <li> edge, producing the same
+        // visual position as text-bubble receipts.  Alignment (left/right) is
+        // handled by mx_EventTile_gallery_lineWrapper below, which mirrors the
+        // role of mx_EventTile_line in the standard tile.
         margin-inline-start: var(--EventTile_bubble-margin-inline-start, 49px);
         margin-inline-end: var(--EventTile_bubble-margin-inline-end, 60px);
         position: relative;
@@ -237,9 +242,14 @@
             }
         }
 
-        // Own messages: right-aligned + self background
+        // Own messages: right-align the lineWrapper + self background
         &[data-self="true"] {
-            margin-inline-start: auto;
+            .mx_EventTile_gallery_lineWrapper {
+                // Mirrors margin-inline-start: auto on mx_EventTile_line for
+                // own messages in standard EventBubbleTile — pushes the narrow
+                // wrapper (and thus the bubble) to the right edge of the <li>.
+                margin-inline-start: auto;
+            }
 
             .mx_EventTile_gallery_bubble {
                 background: $eventbubble-self-bg;
@@ -250,10 +260,7 @@
             }
         }
 
-        // Others' messages: left-aligned
-        &[data-self="false"] {
-            margin-inline-end: auto;
-        }
+        // Others' messages: wrapper is left-aligned by default — no extra rule.
 
         // DM (hideSender=true): keep the sender-name row taking layout space
         // so the bubble still drops below the avatar's vertical centre, but
@@ -286,72 +293,46 @@
 }
 
 // -------------------------------------------------------------------------
-// Read receipts (msgOption) row inside a gallery tile
+// Read receipts — no custom overrides needed
 // -------------------------------------------------------------------------
+// mx_EventTile_msgOption is a direct child of the gallery <li>, the same
+// structural relationship as standard EventTile in Room/default rendering.
+// The global rule in _EventTile.pcss:
+//   .mx_EventTile[data-layout="bubble"] .mx_EventTile_msgOption .mx_ReadReceiptGroup
+//     { position: absolute; inset-inline-end: -78px; inset-block-end: -3px; }
+// applies here unchanged — the <li> is the containing block for the
+// absolute receipt, matching the behaviour of text bubbles exactly.
 
-.mx_EventTile_gallery > .mx_EventTile_msgOption {
+// -------------------------------------------------------------------------
+// lineWrapper — mirrors mx_EventTile_line in standard EventBubbleTile
+// -------------------------------------------------------------------------
+// This narrow, positioned container wraps the bubble + action bar so that:
+//   • mx_MessageActionBar's `inset-inline-start: calc(100% - …)` from
+//     _EventBubbleTile.pcss [data-self="false"] anchors to the wrapper's
+//     right edge (≈ bubble right edge) rather than to the full-width <li>.
+//   • mx_EventTile_msgOption stays OUTSIDE this wrapper as a direct child
+//     of the <li>, so ReadReceiptGroup's `inset-inline-end: -78px` anchors
+//     to the full-width <li> — identical to standard text-bubble receipts.
+
+.mx_EventTile_gallery_lineWrapper {
     position: relative;
-    z-index: 2;
-    margin-top: 2px;
-    // Reset the floating 90px-wide hack used by the standard EventTile
-    // group layout — we want the receipts to sit directly under the
-    // bubble and align with its edges.
-    float: none;
-    width: auto;
-    height: auto;
-
-    .mx_ReadReceiptGroup {
-        position: relative;
-        inset: auto;
-    }
-}
-
-// _EventTile.pcss carries a (0,4,0)-specificity rule that forces
-// .mx_ReadReceiptGroup inside any .mx_EventTile[data-layout="bubble"]
-// to position: absolute with inset-inline-end: -78px, pushing it 78px
-// past the bubble's right edge and off-screen in the narrow thread panel.
-// Our selector above is only (0,3,0) and loses.  Add a (0,5,0) rule that
-// explicitly resets every inset logical/physical property so the receipt
-// stays in its natural (relative) position under the bubble.
-.mx_EventTile.mx_EventTile_gallery[data-layout="bubble"] > .mx_EventTile_msgOption {
-    .mx_ReadReceiptGroup {
-        position: relative;
-        inset-block-start: auto;
-        inset-block-end: auto;
-        inset-inline-start: auto;
-        inset-inline-end: auto;
-    }
-}
-
-.mx_EventTile_gallery[data-self="true"] > .mx_EventTile_msgOption {
-    text-align: right;
-}
-
-.mx_EventTile_gallery[data-self="false"] > .mx_EventTile_msgOption {
-    text-align: left;
+    width: fit-content;
 }
 
 // -------------------------------------------------------------------------
-// Standard action bar positioning inside gallery tiles
+// Thread-panel receipt position correction
 // -------------------------------------------------------------------------
-
-.mx_EventTile_gallery .mx_MessageActionBar {
-    right: 0;
-}
-
-// In thread view, _EventTile.pcss applies:
-//   .mx_ThreadView .mx_EventTile[data-layout="bubble"] { margin-inline: 36px }
-// with (0,3,0) specificity, which overrides our (0,3,0) gallery rule that
-// sets margin-inline-end: auto for others' messages (last-write wins and
-// _EventTile.pcss loads after us).  Without the auto right margin, the
-// gallery <li> stretches to the full thread-panel width as a flex item.
-// The action bar is then positioned at inset-inline-start: calc(100%…)
-// relative to that full-width <li>, placing it far to the right of the
-// left-aligned bubble — visually the "context menu/action bar offset" the
-// user reports.  Own messages are unaffected because align-items: flex-end
-// on the thread container right-aligns the bubble to match the right edge.
-// Bump specificity to (0,5,0) so margin-inline-end: auto is preserved in
-// thread view, keeping the <li> shrunk to content-width (= bubble width).
-.mx_EventTile.mx_EventTile_gallery[data-layout="bubble"][data-self="false"] {
-    margin-inline-end: auto;
+// In thread view the gallery <li> is full-width with margin-inline: 36px
+// each side (applied by the .mx_ThreadView .mx_EventTile[data-layout="bubble"]
+// rule in _EventTile.pcss).  The standard receipt rule in _EventTile.pcss:
+//   .mx_EventTile[data-layout="bubble"] .mx_EventTile_msgOption .mx_ReadReceiptGroup
+//     { inset-inline-end: -78px; }   ← specificity (0,4,0)
+// loads after _MImageGallery.pcss and wins at equal specificity, so -78px
+// always applies and the receipt lands off-screen.
+//
+// Adding [data-layout="bubble"] raises this selector to (0,5,0) so it beats
+// _EventTile.pcss.  The formula -36px + 6px = -30px places the receipt's
+// right edge 6px inside the thread panel's right border (all avatars visible).
+.mx_ThreadView .mx_EventTile_gallery[data-layout="bubble"] > .mx_EventTile_msgOption .mx_ReadReceiptGroup {
+    inset-inline-end: calc(-1 * var(--BaseCard_EventTile-spacing-inline, 36px) + 6px);
 }

@@ -146,7 +146,36 @@ function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent,
                 offset.
             */}
             <SenderProfile mxEvent={mxEvent} />
-            {children}
+            {/*
+                mx_EventTile_gallery_lineWrapper mirrors the role of
+                mx_EventTile_line in standard EventBubbleTile:
+                  - position: relative + width: fit-content so that the action
+                    bar's `inset-inline-start: calc(100% - …)` (from
+                    _EventBubbleTile.pcss [data-self="false"]) anchors to the
+                    narrow wrapper right edge ≈ bubble right edge, not to the
+                    full-width <li>.
+                  - For own messages, `margin-inline-start: auto` (via CSS on
+                    [data-self="true"]) pushes it to the right of the <li>.
+                mx_EventTile_msgOption stays OUTSIDE this wrapper so its
+                ReadReceiptGroup's `inset-inline-end: -78px` uses the full-width
+                <li> as its containing block — identical to text bubbles.
+            */}
+            <div className="mx_EventTile_gallery_lineWrapper">
+                {children}
+                {showActionBar && (
+                    <ActionBarWrapper
+                        mxEvent={mxEvent}
+                        reactions={reactions}
+                        permalinkCreator={permalinkCreator}
+                        getTile={returnNull}
+                        getReplyChain={returnNull}
+                        onFocusChange={setActionBarFocused}
+                        toggleThreadExpanded={noop}
+                        getRelationsForEvent={getRelationsForEvent}
+                        galleryEvents={galleryEvents.length > 1 ? galleryEvents : undefined}
+                    />
+                )}
+            </div>
             {readReceipts && readReceipts.length > 0 && readReceiptMap && (
                 <div className="mx_EventTile_msgOption">
                     <ReadReceiptGroup
@@ -162,19 +191,6 @@ function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent,
                 <div className="mx_EventTile_footer">
                     <ReactionsRowWrapper mxEvent={mxEvent} reactions={reactions} />
                 </div>
-            )}
-            {showActionBar && (
-                <ActionBarWrapper
-                    mxEvent={mxEvent}
-                    reactions={reactions}
-                    permalinkCreator={permalinkCreator}
-                    getTile={returnNull}
-                    getReplyChain={returnNull}
-                    onFocusChange={setActionBarFocused}
-                    toggleThreadExpanded={noop}
-                    getRelationsForEvent={getRelationsForEvent}
-                    galleryEvents={galleryEvents.length > 1 ? galleryEvents : undefined}
-                />
             )}
             {contextMenu && (
                 <MessageContextMenu
@@ -312,10 +328,16 @@ export class ImageGalleryGrouper extends BaseGrouper {
                 </div>
             );
         } else {
+            // In thread view the panel is narrow; cap the grid to 80% of the
+            // default (400px) so cells stay comfortably visible. On the main
+            // timeline keep the default (500px).
+            const isThreadView =
+                this.panel.context?.timelineRenderingType === TimelineRenderingType.Thread;
             mediaContent = (
                 <MImageGallery
                     events={imageEvents}
                     onHeightChanged={() => this.panel.forceUpdate()}
+                    maxGridSize={isThreadView ? 400 : undefined}
                 />
             );
         }

@@ -82,36 +82,34 @@ Wraps the gallery output in an `<li>` that mimics a standard EventTile's DOM str
     data-layout="bubble"
     data-self="true|false">
 
-  <!-- Sender avatar (omitted when mxEvent.sender is missing). Picks up the
-       standard EventBubbleTile positioning because the <li> carries
-       data-layout="bubble". -->
   <div class="mx_EventTile_avatar">
     <MemberAvatar size="30px" />
   </div>
 
-  <!-- Sender name row. ALWAYS rendered so it reserves vertical space; the
-       bubble drops below it and the avatar's vertical centre lines up with
-       the top of the bubble — same as standard text bubbles.
-       · For own messages: upstream `&[data-self="true"] .mx_DisambiguatedProfile`
-         rule collapses the row via `display: none` (self avatar uses top: -19px
-         and doesn't want the offset).
-       · For DMs (data-hide-sender="true"): gallery-specific CSS uses
-         `visibility: hidden`, hiding the name visually but keeping the
-         layout space so the offset stays. -->
+  <!-- Sender name row — always rendered, see "Sender avatar and sender name" below. -->
   <SenderProfile mxEvent={...} />
 
-  <div class="mx_EventTile_gallery_bubble">
-    <!-- MImageBody or MImageGallery -->
-    <!-- optional caption -->
+  <!-- mx_EventTile_gallery_lineWrapper mirrors the role of mx_EventTile_line in
+       standard EventBubbleTile: position:relative + width:fit-content so the
+       action bar's inset-inline-start:calc(100%−…) anchors to the bubble's right
+       edge rather than the full-width <li>.
+       For own messages, CSS adds margin-inline-start:auto to right-align it. -->
+  <div class="mx_EventTile_gallery_lineWrapper">
+    <div class="mx_EventTile_gallery_bubble">
+      <!-- MImageBody or MImageGallery -->
+      <!-- optional caption -->
+    </div>
+    <!-- ActionBarWrapper (shown on hover / focused / context menu open) -->
   </div>
 
-  <!-- Read receipts aggregated across every event in the group. -->
+  <!-- msgOption is intentionally OUTSIDE lineWrapper so ReadReceiptGroup's
+       inset-inline-end:-78px anchors to the full-width <li>, placing receipts
+       at the same position as standard text-bubble receipts. -->
   <div class="mx_EventTile_msgOption">
     <ReadReceiptGroup ... />
   </div>
 
   <!-- ReactionsRowWrapper (when showReactions is enabled) -->
-  <!-- ActionBarWrapper (shown on hover or while focused / context menu open) -->
   <!-- MessageContextMenu (shown on right-click or Options button click) -->
 </li>
 ```
@@ -126,7 +124,7 @@ Wraps the gallery output in an `<li>` that mimics a standard EventTile's DOM str
 
 ### Action bar
 
-The gallery reuses the standard `<ActionBarWrapper>` from `EventTile.tsx` instead of a bespoke toolbar — this gives it the same Reply / React / Edit / Options affordances as text bubbles, kept in sync with upstream automatically. `GalleryTile` renders it when `hover || actionBarFocused || contextMenu` is truthy. The wrapper receives `galleryEvents` so the Options menu's Forward and Remove actions can fan out across the whole group; `getTile` and `getReplyChain` are stubbed to `() => null` because the gallery doesn't expose a `TileShape`-style ref.
+The gallery reuses the standard `<ActionBarWrapper>` from `EventTile.tsx`. `GalleryTile` renders it when `hover || actionBarFocused || contextMenu` is truthy. It is placed **inside `mx_EventTile_gallery_lineWrapper`** (not as a direct `<li>` child) so its `position:absolute` coordinates are relative to the narrow bubble wrapper, matching the behaviour of action bars inside `mx_EventTile_line` for text bubbles. The wrapper receives `galleryEvents` so Forward and Remove fan out across the whole group.
 
 ### MImageGallery (grid component)
 
@@ -136,7 +134,7 @@ Renders a 2-column CSS grid of uniform square thumbnails. All cells are the same
 
 #### Grid sizing
 
-The grid size is controlled by the `maxGridSize` prop (default: 500px for the timeline). This acts as the **height reference** — the maximum total grid dimension. Cell size is derived from it:
+The grid size is controlled by the `maxGridSize` prop (default: **500px** for the main timeline, **400px** in thread view). Thread view uses 400px (80% of 500) because the panel is too narrow to show 500px-wide cells cleanly. This is detected in `getTiles()` via `timelineRenderingType === TimelineRenderingType.Thread`. This acts as the **height reference** — the maximum total grid dimension. Cell size is derived from it:
 
 ```
 MAX_CELL_SIZE = floor((maxGridSize - gap) / 2)   // 249px at default 500px
@@ -180,22 +178,26 @@ All styles live in `apps/web/res/css/views/messages/_MImageGallery.pcss`.
 ### Key class hierarchy
 
 ```
-.mx_EventTile_gallery              — the <li> wrapper
+.mx_EventTile_gallery              — the <li> wrapper (full-width, same as text bubbles)
   &[data-layout="group"]           — group layout positioning
   &[data-layout="bubble"]          — bubble layout (primary)
-    &::before                      — hover highlight pseudo-element
-    .mx_EventTile_gallery_bubble   — the visible bubble container
-      .mx_MImageGallery            — grid component wrapper (max-width: 500px)
-        .mx_MImageGallery_grid     — CSS grid (fixed pixel tracks)
-          .mx_MImageGallery_cell   — individual image slot (square-cropped)
-      .mx_MImageBody_single        — single image wrapper (when 1 image)
-      .mx_EventTile_galleryCaption — caption text
-  &[data-self="true"]              — right-aligned, self background
-  &[data-self="false"]             — left-aligned, others background
+    &::before                      — hover highlight pseudo-element (full-width via negative insets)
+    .mx_EventTile_gallery_lineWrapper  — narrow (width:fit-content), positioned; mirrors
+                                           mx_EventTile_line; handles bubble alignment +
+                                           action bar positioning anchor
+      .mx_EventTile_gallery_bubble — the visible bubble container (position:relative, z-index:1)
+        .mx_MImageGallery          — grid component wrapper (max-width: 500px)
+          .mx_MImageGallery_grid   — CSS grid (fixed pixel tracks)
+            .mx_MImageGallery_cell — individual image slot (square-cropped)
+        .mx_MImageBody_single      — single image wrapper (when 1 image)
+        .mx_EventTile_galleryCaption — caption text
+      .mx_MessageActionBar         — inside lineWrapper so positioning is bubble-relative
+    .mx_EventTile_msgOption        — direct <li> child (outside lineWrapper) so receipt
+                                       anchors to the full-width <li> edge
+  &[data-self="true"]              — lineWrapper gets margin-inline-start:auto (right-align)
+  &[data-self="false"]             — lineWrapper is left-aligned by default
 
 .mx_EventTile_avatar               — sender avatar (positioned by EventBubbleTile rules)
-.mx_EventTile_msgOption            — ReadReceiptGroup row under the bubble
-.mx_MessageActionBar               — standard hover toolbar (Reply/React/Edit/Options)
 ```
 
 ### Bubble layout specifics
@@ -206,16 +208,17 @@ The bubble layout requires careful z-index layering:
 |---------|---------|---------|
 | `::before` (hover) | 0 | Full-width hover highlight background |
 | `.mx_EventTile_gallery_bubble` | 1 | Bubble sits above hover highlight |
-| `.mx_EventTile_msgOption` | 2 | Read receipts row stays clickable above bubble |
 | `.mx_MessageActionBar` | (default) | Toolbar floats above everything via standard EventTile rules |
 | `.mx_EventTile_avatar` | 9 | Sits over the bubble corner per EventBubbleTile defaults |
+
+`mx_EventTile_msgOption` is a direct `<li>` child (outside the bubble stacking context) and has no explicit z-index.
 
 **Why z-index: 0 instead of -1 for the hover highlight:**
 Standard EventBubbleTile uses `z-index: -1` on its `::before` hover highlight. This breaks inside thread reply views because thread panels use `overflow: hidden` which creates a new stacking context — a `z-index: -1` pseudo-element gets pushed behind the parent's background and becomes invisible. The gallery uses `z-index: 0` for the highlight and `z-index: 1` for the bubble content, keeping everything in the same stacking context.
 
 ### Bubble width constraint
 
-The bubble (`.mx_EventTile_gallery_bubble`) has `max-width: 500px` (content-box) and `width: fit-content`. This caps the content area to exactly match the grid width so that captions wrap within the bubble rather than inflating it. Element does **not** use a global `box-sizing: border-box` rule, so the 500px applies to the content area; the total bubble width including padding is 500 + 2 × 11 = 522px.
+The bubble (`.mx_EventTile_gallery_bubble`) has `max-width: 500px` (content-box) and `width: fit-content`. This caps the content area to exactly match the grid width so that captions wrap within the bubble rather than inflating it. Element does **not** use a global `box-sizing: border-box` rule, so the 500px applies to the content area; the total bubble width including padding is 500 + 2 × 11 = 522px. In thread view the grid is 400px wide (`maxGridSize={400}`), so the bubble is proportionally smaller.
 
 ### Bubble negative inline margins
 
@@ -293,7 +296,9 @@ if (this.panel.props.showReadReceipts) {
 
 `MessagePanel.readReceiptsByEvent`, `MessagePanel.readReceiptMap`, and `MessagePanel.isUnmounting` are `public` (not `private`) precisely so custom groupers like this one can render their own receipts UI. Each receipt only appears once per gallery even if MessagePanel's per-event map happens to bind it to more than one image in the group.
 
-The receipts are wrapped in `<div class="mx_EventTile_msgOption">` so the standard `mx_EventTile_msgOption` styles apply, then gallery-specific CSS (`_MImageGallery.pcss`) resets the 90px-wide float used by the standard group layout and right-aligns the row for self messages, left-aligns for others.
+The receipts are wrapped in `<div class="mx_EventTile_msgOption">` placed as a **direct child of `<li>`**, outside `mx_EventTile_gallery_lineWrapper`. This mirrors the structure of standard text-bubble tiles where `msgOption` is also a direct `<li>` child, so `_EventTile.pcss`'s rule `position:absolute; inset-inline-end:-78px` anchors the receipt to the full-width `<li>` — the same containing block as text bubbles. No gallery-specific receipt overrides are needed for the main timeline.
+
+**Thread view:** the `<li>` in thread has `margin-inline: 36px` each side (from `_EventTile.pcss`), so `-78px` from the `<li>` right edge lands 42px outside the panel. `_MImageGallery.pcss` adds a `(0,5,0)`-specificity rule scoped to `.mx_ThreadView` that sets `inset-inline-end: calc(-1 * var(--BaseCard_EventTile-spacing-inline, 36px) + 6px)` (≈ −30px), keeping the receipt 6px inside the panel edge.
 
 ## Remove redacts the whole group
 
