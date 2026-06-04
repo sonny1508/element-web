@@ -69,8 +69,12 @@ export interface EventTileActionBarViewModelProps {
     getRelationsForEvent?: GetRelationsForEvent;
     /** Called when the expand or collapse thread action is activated. */
     onToggleThreadExpanded?: (anchor: HTMLElement | null) => void;
-    /** When true, the Hide media action is suppressed (e.g. for gallery groups where hiding a single image is misleading). */
-    disableHide?: boolean;
+    /**
+     * When this event is the representative of an image-gallery group, the full set of events in the group.
+     * Download/Hide will fan out across every event so the action applies to the whole gallery, and the
+     * button labels switch to "… all images in this group".
+     */
+    galleryEvents?: MatrixEvent[];
 }
 
 interface LocalActionBarState {
@@ -130,7 +134,8 @@ export class EventTileActionBarViewModel
     ): ActionBarViewSnapshot {
         const client = MatrixClientPeg.safeGet();
         const eventState = EventTileActionBarViewModel.getDerivedEventState(props, client);
-        const mediaState = EventTileActionBarViewModel.getDerivedMediaState(props.mxEvent, client, localState, props.disableHide);
+        const mediaState = EventTileActionBarViewModel.getDerivedMediaState(props.mxEvent, client, localState);
+        const isGalleryGroup = !!props.galleryEvents && props.galleryEvents.length > 1;
 
         return {
             actions: EventTileActionBarViewModel.resolveActions(eventState, mediaState),
@@ -140,6 +145,7 @@ export class EventTileActionBarViewModel
             isPinned: eventState.isPinned,
             isQuoteExpanded: eventState.isQuoteExpanded,
             isThreadReplyAllowed: eventState.isThreadReplyAllowed,
+            isGalleryGroup,
         };
     }
 
@@ -219,14 +225,13 @@ export class EventTileActionBarViewModel
         mxEvent: MatrixEvent,
         client: ReturnType<typeof MatrixClientPeg.safeGet>,
         localState: LocalActionBarState,
-        disableHide?: boolean,
     ): DerivedMediaState {
         const contentActionable = isContentActionable(mxEvent);
         const mediaHelper = MediaEventHelper.isEligible(mxEvent) ? new MediaEventHelper(mxEvent) : undefined;
 
         return {
             showDownload: contentActionable && Boolean(mediaHelper) && localState.canDownload,
-            showHide: !disableHide && contentActionable && MediaEventHelper.canHide(mxEvent) && getMediaVisibility(mxEvent, client),
+            showHide: contentActionable && MediaEventHelper.canHide(mxEvent) && getMediaVisibility(mxEvent, client),
             isDownloadEncrypted: mediaHelper?.media.isEncrypted ?? false,
             isDownloadLoading: localState.isDownloadLoading,
         };
@@ -434,22 +439,30 @@ export class EventTileActionBarViewModel
     public onDownloadClick = async (_anchor: HTMLElement | null): Promise<void> => {
         if (this.isDownloadLoading || !this.canDownload) return;
         const requestId = ++this.downloadRequestId;
-        const { mxEvent } = this.props;
+        const { mxEvent, galleryEvents } = this.props;
+
+        // When this tile represents a gallery group, download every event in the group.
+        // The single-event branch reuses the cached blob for the representative event.
+        const events = galleryEvents && galleryEvents.length > 1 ? galleryEvents : [mxEvent];
 
         try {
             if (!this.setDownloadLoading(requestId, mxEvent, true)) return;
-            const mediaEventHelper = new MediaEventHelper(mxEvent);
 
-            if (!this.downloadedBlob) {
-                const downloadedBlob = await mediaEventHelper.sourceBlob.value;
-                if (!this.isCurrentDownloadRequest(requestId, mxEvent)) return;
-                this.downloadedBlob = downloadedBlob;
+            for (const ev of events) {
+                const mediaEventHelper = new MediaEventHelper(ev);
+                let blob: Blob;
+                if (ev === mxEvent && this.downloadedBlob) {
+                    blob = this.downloadedBlob;
+                } else {
+                    blob = await mediaEventHelper.sourceBlob.value;
+                    if (!this.isCurrentDownloadRequest(requestId, mxEvent)) return;
+                    if (ev === mxEvent) this.downloadedBlob = blob;
+                }
+                await this.downloader.download({
+                    blob,
+                    name: mediaEventHelper.fileName ?? _t("common|image"),
+                });
             }
-
-            await this.downloader.download({
-                blob: this.downloadedBlob,
-                name: mediaEventHelper.fileName ?? _t("common|image"),
-            });
         } catch (e) {
             if (!this.isCurrentDownloadRequest(requestId, mxEvent)) return;
             Modal.createDialog(ErrorDialog, {
@@ -461,9 +474,13 @@ export class EventTileActionBarViewModel
         }
     };
 
-    /** Hides the media preview for the current event. */
+    /** Hides the media preview for the current event (or every event in the gallery group). */
     public onHideClick = (_anchor: HTMLElement | null): void => {
-        void setMediaVisibility(this.props.mxEvent, false);
+        const { mxEvent, galleryEvents } = this.props;
+        const events = galleryEvents && galleryEvents.length > 1 ? galleryEvents : [mxEvent];
+        for (const ev of events) {
+            void setMediaVisibility(ev, false);
+        }
     };
 
     /** Forwards the expand or collapse thread action using the triggering button as the anchor. */
