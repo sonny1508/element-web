@@ -44,7 +44,11 @@ import UserActivity from "./UserActivity";
 import { mediaFromMxc } from "./customisations/Media";
 import ErrorDialog from "./components/views/dialogs/ErrorDialog";
 import { SdkContextClass } from "./contexts/SDKContext";
-import { localNotificationsAreSilenced, createLocalNotificationSettingsIfNeeded } from "./utils/notifications";
+import {
+    localNotificationsAreSilenced,
+    createLocalNotificationSettingsIfNeeded,
+    createPollStartNotificationRuleIfNeeded,
+} from "./utils/notifications";
 import { getIncomingCallToastKey, getNotificationEventSendTs, IncomingCallToast } from "./toasts/IncomingCallToast";
 import ToastStore from "./stores/ToastStore";
 import { stripPlainReply } from "./utils/Reply";
@@ -439,6 +443,8 @@ class NotifierClass extends TypedEventEmitter<keyof EmittedEvents, EmittedEvents
         // wait for first non-cached sync to complete
         if (![SyncState.Stopped, SyncState.Error].includes(state) && !data?.fromCache) {
             createLocalNotificationSettingsIfNeeded(MatrixClientPeg.safeGet());
+            // Ensure a fresh poll notifies the room like any other message.
+            createPollStartNotificationRuleIfNeeded(MatrixClientPeg.safeGet());
         }
     };
 
