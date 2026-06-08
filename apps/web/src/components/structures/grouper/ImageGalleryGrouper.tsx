@@ -10,7 +10,15 @@
  */
 
 import React, { type ReactNode, useState, useCallback, useEffect } from "react";
-import { EventType, MsgType, type MatrixEvent, MatrixEventEvent, type Relations } from "matrix-js-sdk/src/matrix";
+import {
+    EventType,
+    MsgType,
+    type MatrixEvent,
+    MatrixEventEvent,
+    type Relations,
+    type Thread,
+    ThreadEvent,
+} from "matrix-js-sdk/src/matrix";
 
 import type MessagePanel from "../MessagePanel";
 import { type WrappedEvent } from "../MessagePanel";
@@ -28,7 +36,51 @@ import { TimelineRenderingType } from "../../../contexts/RoomContext";
 import { type GetRelationsForEvent, ReactionsRowWrapper, ActionBarWrapper, type IReadReceiptProps } from "../../views/rooms/EventTile";
 import { type IReadReceiptPosition } from "../../views/rooms/ReadReceiptMarker";
 import { ReadReceiptGroup } from "../../views/rooms/ReadReceiptGroup";
+import ThreadSummary from "../../views/rooms/ThreadSummary";
 import { registerGalleryForThread, getGalleryForThread } from "./galleryThreadRegistry";
+
+/**
+ * Tracks the thread rooted at `mxEvent` (if any) and keeps it live-updating,
+ * mirroring EventTile's `state.thread` / `updateThread` / `onNewThread` logic.
+ * Returns the Thread whose root is `mxEvent`, or null.
+ *
+ * This is what lets a gallery's representative image show the "N replies"
+ * thread summary in the timeline, just like a normal text message does.
+ */
+function useEventThread(mxEvent: MatrixEvent): Thread | null {
+    const resolveThread = useCallback((): Thread | null => {
+        let thread: Thread | undefined = mxEvent.getThread();
+        if (!thread) {
+            // Race-condition fallback (same as EventTile.thread getter): the
+            // event may not have its thread wired up yet at sync time.
+            const room = MatrixClientPeg.safeGet().getRoom(mxEvent.getRoomId());
+            thread = room?.findThreadForEvent(mxEvent) ?? undefined;
+        }
+        return thread ?? null;
+    }, [mxEvent]);
+
+    const [thread, setThread] = useState<Thread | null>(() => resolveThread());
+
+    useEffect(() => {
+        setThread(resolveThread());
+
+        const onUpdate = (updated: Thread): void => setThread(updated);
+        const onNewThread = (newThread: Thread): void => {
+            if (newThread.id === mxEvent.getId()) setThread(newThread);
+        };
+
+        mxEvent.on(ThreadEvent.Update, onUpdate);
+        const room = MatrixClientPeg.safeGet().getRoom(mxEvent.getRoomId());
+        room?.on(ThreadEvent.New, onNewThread);
+
+        return () => {
+            mxEvent.off(ThreadEvent.Update, onUpdate);
+            room?.off(ThreadEvent.New, onNewThread);
+        };
+    }, [mxEvent, resolveThread]);
+
+    return thread;
+}
 
 /**
  * Returns true if the event is an m.room.message with msgtype m.image.
@@ -68,16 +120,23 @@ interface GalleryTileProps {
     isTwelveHour?: boolean;
     /** Hide the sender name row (true in DMs, ≤2 members) — mirrors MessagePanel.shouldHideSender. */
     hideSender?: boolean;
+    /** Whether to render the "N replies" thread summary. False inside a thread timeline. */
+    showThreadInfo?: boolean;
     children: ReactNode;
 }
 
 const noop = (): void => {};
 const returnNull = (): null => null;
 
-function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, readReceipts, readReceiptMap, checkUnmounting, isTwelveHour, hideSender, children }: GalleryTileProps): ReactNode {
+function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, readReceipts, readReceiptMap, checkUnmounting, isTwelveHour, hideSender, showThreadInfo, children }: GalleryTileProps): ReactNode {
     const [hover, setHover] = useState(false);
     const [actionBarFocused, setActionBarFocused] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ left: number; top: number; bottom: number } | null>(null);
+
+    // Thread rooted at the representative image (if any). Threads are always
+    // created on the first image in the group (the action bar uses imageEvents[0]),
+    // so tracking mxEvent is sufficient to surface the "N replies" summary.
+    const thread = useEventThread(mxEvent);
 
     // Reactions support
     const [reactions, setReactions] = useState<Relations | null | undefined>(() => {
@@ -174,6 +233,9 @@ function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent,
                         getRelationsForEvent={getRelationsForEvent}
                         galleryEvents={galleryEvents.length > 1 ? galleryEvents : undefined}
                     />
+                )}
+                {showThreadInfo && thread && thread.id === mxEvent.getId() && (
+                    <ThreadSummary mxEvent={mxEvent} thread={thread} data-testid="thread-summary" />
                 )}
             </div>
             {readReceipts && readReceipts.length > 0 && readReceiptMap && (
@@ -289,11 +351,11 @@ export class ImageGalleryGrouper extends BaseGrouper {
         let imageEvents = this.events.map((we) => we.event);
         const firstEventId = imageEvents[0].getId()!;
 
+        const isThreadView =
+            this.panel.context?.timelineRenderingType === TimelineRenderingType.Thread;
+
         // In thread context, restore the full gallery from registry or room timeline
-        if (
-            imageEvents.length === 1 &&
-            this.panel.context?.timelineRenderingType === TimelineRenderingType.Thread
-        ) {
+        if (imageEvents.length === 1 && isThreadView) {
             const registered = getGalleryForThread(firstEventId);
             if (registered && registered.length > 1) {
                 imageEvents = registered;
@@ -331,8 +393,6 @@ export class ImageGalleryGrouper extends BaseGrouper {
             // In thread view the panel is narrow; cap the grid to 80% of the
             // default (400px) so cells stay comfortably visible. On the main
             // timeline keep the default (500px).
-            const isThreadView =
-                this.panel.context?.timelineRenderingType === TimelineRenderingType.Thread;
             mediaContent = (
                 <MImageGallery
                     events={imageEvents}
@@ -381,6 +441,7 @@ export class ImageGalleryGrouper extends BaseGrouper {
                 checkUnmounting={this.panel.isUnmounting}
                 isTwelveHour={this.panel.props.isTwelveHour}
                 hideSender={this.panel.state.hideSender}
+                showThreadInfo={!isThreadView}
             >
                 <div className="mx_EventTile_gallery_bubble">
                     {mediaContent}

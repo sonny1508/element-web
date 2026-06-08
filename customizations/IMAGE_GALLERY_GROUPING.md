@@ -100,6 +100,7 @@ Wraps the gallery output in an `<li>` that mimics a standard EventTile's DOM str
       <!-- optional caption -->
     </div>
     <!-- ActionBarWrapper (shown on hover / focused / context menu open) -->
+    <!-- ThreadSummary (when the first image is a thread root; not in thread view) -->
   </div>
 
   <!-- msgOption is intentionally OUTSIDE lineWrapper so ReadReceiptGroup's
@@ -119,6 +120,7 @@ Wraps the gallery output in an `<li>` that mimics a standard EventTile's DOM str
 - `actionBarFocused` (boolean) — set by `<ActionBarWrapper onFocusChange>` so the bar stays visible while a button (e.g. the emoji picker) is open.
 - `contextMenu` (position object | null) — opened by right-click or Options button. When non-null, the action bar also stays visible (prevents flicker when mouse leaves the tile to interact with the menu).
 - `reactions` (Relations | null) — re-fetched via `getRelationsForEvent` whenever `MatrixEventEvent.RelationsCreated` fires on the representative event, so the reactions row updates in place.
+- `thread` (Thread | null) — tracked by the `useEventThread(mxEvent)` hook (listens to `ThreadEvent.Update` / `ThreadEvent.New`) so the "N replies" thread summary appears live. See "Thread summary" below.
 
 **Right-click behavior:** If the click target is an `<img>` element, the native context menu is used (so "Copy image", "Save image as..." etc. work). Otherwise, `MessageContextMenu` is shown.
 
@@ -299,6 +301,23 @@ if (this.panel.props.showReadReceipts) {
 The receipts are wrapped in `<div class="mx_EventTile_msgOption">` placed as a **direct child of `<li>`**, outside `mx_EventTile_gallery_lineWrapper`. This mirrors the structure of standard text-bubble tiles where `msgOption` is also a direct `<li>` child, so `_EventTile.pcss`'s rule `position:absolute; inset-inline-end:-78px` anchors the receipt to the full-width `<li>` — the same containing block as text bubbles. No gallery-specific receipt overrides are needed for the main timeline.
 
 **Thread view:** the `<li>` in thread has `margin-inline: 36px` each side (from `_EventTile.pcss`), so `-78px` from the `<li>` right edge lands 42px outside the panel. `_MImageGallery.pcss` adds a `(0,5,0)`-specificity rule scoped to `.mx_ThreadView` that sets `inset-inline-end: calc(-1 * var(--BaseCard_EventTile-spacing-inline, 36px) + 6px)` (≈ −30px), keeping the receipt 6px inside the panel edge.
+
+## Thread summary ("N replies")
+
+When the representative image (`imageEvents[0]`) is the root of a thread, `GalleryTile` renders the standard `<ThreadSummary>` below the bubble — the same "N replies" pill a normal text message shows. Without this, threads started on an image were invisible in the main timeline: the thread existed in the thread panel, but the source message gave no indication a thread was going on (the bug this section fixes).
+
+The grouper does not extend `EventTile`, so it cannot rely on `EventTile.state.thread` / `renderThreadInfo()`. Instead `GalleryTile` uses a local `useEventThread(mxEvent)` hook that mirrors that logic:
+
+- Resolves the thread via `mxEvent.getThread()`, falling back to `room.findThreadForEvent(mxEvent)` (the same sync-time race-condition fallback `EventTile.thread` uses).
+- Subscribes to `ThreadEvent.Update` on the event and `ThreadEvent.New` on the room, so the summary appears/updates live as replies arrive — no timeline reload needed.
+
+Render guard matches `EventTile.renderThreadInfo`: the summary is only shown when `thread.id === mxEvent.getId()`.
+
+**Threads always root on the first image.** The gallery's action bar passes `imageEvents[0]` as its `mxEvent`, so "Reply in thread" always creates the thread on the first image in the group. Tracking only `imageEvents[0]` is therefore sufficient.
+
+**Suppressed inside thread view.** `GalleryTile` receives `showThreadInfo={!isThreadView}` from `getTiles()`. In the thread timeline the root image must not render its own thread summary (it would duplicate the thread header / counter), mirroring how upstream `EventTile` omits `showThreadInfo` inside a thread timeline.
+
+The `<ThreadSummary>` is placed inside `mx_EventTile_gallery_lineWrapper` (below the bubble), the gallery's equivalent of `mx_EventTile_line` where standard tiles render their thread info.
 
 ## Remove redacts the whole group
 
