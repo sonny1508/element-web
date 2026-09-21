@@ -35,6 +35,7 @@ import PosthogTrackers from "../../PosthogTrackers";
 import Modal from "../../Modal";
 import ErrorDialog from "../../components/views/dialogs/ErrorDialog";
 import SettingsStore from "../../settings/SettingsStore";
+import { UIFeature } from "../../settings/UIFeature";
 import { ModuleApi } from "../../modules/Api";
 import { canCancel, canEditContent, editEvent, isContentActionable } from "../../utils/EventUtils";
 import { shouldDisplayReply } from "../../utils/Reply";
@@ -280,6 +281,21 @@ describe("EventTileActionBarViewModel", () => {
                 content: { join_rule: "public" },
             }),
         );
+
+        expect(vm.getSnapshot().actions).not.toContain(ActionBarAction.Hide);
+    });
+
+    it("does not offer Hide when media hiding is disabled for the deployment", () => {
+        vi.spyOn(MediaEventHelper, "canHide").mockReturnValue(true);
+        const originalGetValue = SettingsStore.getValue.bind(SettingsStore);
+        vi.spyOn(SettingsStore, "getValue").mockImplementation(((name: string, ...args: unknown[]) =>
+            name === UIFeature.MediaHiding ? false : (originalGetValue as any)(name, ...args)) as any);
+
+        const vm = createVm({
+            mxEvent: createMessageEvent({
+                content: { msgtype: MsgType.Image, body: "Image", url: "mxc://example.org/file" },
+            }),
+        });
 
         expect(vm.getSnapshot().actions).not.toContain(ActionBarAction.Hide);
     });

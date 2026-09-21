@@ -13,9 +13,11 @@ import { _t } from "../../../../../languageHandler";
 import { useSettingValue } from "../../../../../hooks/useSettings";
 import SettingsStore from "../../../../../settings/SettingsStore";
 import { SettingLevel } from "../../../../../settings/SettingLevel";
+import { UIFeature } from "../../../../../settings/UIFeature";
 
 export const MediaPreviewAccountSettings: React.FC<{ roomId?: string }> = ({ roomId }) => {
     const currentMediaPreview = useSettingValue("mediaPreviewConfig", roomId);
+    const mediaHidingEnabled = useSettingValue(UIFeature.MediaHiding);
 
     const changeSetting = useCallback(
         (newValue: MediaPreviewConfig) => {
@@ -90,60 +92,62 @@ export const MediaPreviewAccountSettings: React.FC<{ roomId?: string }> = ({ roo
                 />
             )}
             {/* Explict label here because htmlFor is not supported for linking to radiogroups */}
-            <Field
-                id="mx_media_previews"
-                role="radiogroup"
-                name="media_previews"
-                aria-label={_t("settings|media_preview|media_preview_label")}
-            >
-                <Label>{_t("settings|media_preview|media_preview_label")}</Label>
-                <HelpMessage className="mx_MediaPreviewAccountSetting_RadioHelp">
-                    {_t("settings|media_preview|media_preview_description")}
-                </HelpMessage>
-                <InlineField
-                    name="media_preview_off"
-                    className="mx_MediaPreviewAccountSetting_Radio"
-                    control={
-                        <RadioInput
-                            id="mx_media_previews_off"
-                            checked={currentMediaPreview.media_previews === MediaPreviewValue.Off}
-                            onChange={mediaPreviewOnChangeOff}
-                        />
-                    }
+            {mediaHidingEnabled && (
+                <Field
+                    id="mx_media_previews"
+                    role="radiogroup"
+                    name="media_previews"
+                    aria-label={_t("settings|media_preview|media_preview_label")}
                 >
-                    <Label htmlFor="mx_media_previews_off">{_t("settings|media_preview|hide_media")}</Label>
-                </InlineField>
-                {!roomId && (
+                    <Label>{_t("settings|media_preview|media_preview_label")}</Label>
+                    <HelpMessage className="mx_MediaPreviewAccountSetting_RadioHelp">
+                        {_t("settings|media_preview|media_preview_description")}
+                    </HelpMessage>
                     <InlineField
-                        name="mx_media_previews_private"
+                        name="media_preview_off"
                         className="mx_MediaPreviewAccountSetting_Radio"
                         control={
                             <RadioInput
-                                id="mx_media_previews_private"
-                                checked={currentMediaPreview.media_previews === MediaPreviewValue.Private}
-                                onChange={mediaPreviewOnChangePrivate}
+                                id="mx_media_previews_off"
+                                checked={currentMediaPreview.media_previews === MediaPreviewValue.Off}
+                                onChange={mediaPreviewOnChangeOff}
                             />
                         }
                     >
-                        <Label htmlFor="mx_media_previews_private">
-                            {_t("settings|media_preview|show_in_private")}
-                        </Label>
+                        <Label htmlFor="mx_media_previews_off">{_t("settings|media_preview|hide_media")}</Label>
                     </InlineField>
-                )}
-                <InlineField
-                    name="media_preview_on"
-                    className="mx_MediaPreviewAccountSetting_Radio"
-                    control={
-                        <RadioInput
-                            id="mx_media_previews_on"
-                            checked={currentMediaPreview.media_previews === MediaPreviewValue.On}
-                            onChange={mediaPreviewOnChangeOn}
-                        />
-                    }
-                >
-                    <Label htmlFor="mx_media_previews_on">{_t("settings|media_preview|show_media")}</Label>
-                </InlineField>
-            </Field>
+                    {!roomId && (
+                        <InlineField
+                            name="mx_media_previews_private"
+                            className="mx_MediaPreviewAccountSetting_Radio"
+                            control={
+                                <RadioInput
+                                    id="mx_media_previews_private"
+                                    checked={currentMediaPreview.media_previews === MediaPreviewValue.Private}
+                                    onChange={mediaPreviewOnChangePrivate}
+                                />
+                            }
+                        >
+                            <Label htmlFor="mx_media_previews_private">
+                                {_t("settings|media_preview|show_in_private")}
+                            </Label>
+                        </InlineField>
+                    )}
+                    <InlineField
+                        name="media_preview_on"
+                        className="mx_MediaPreviewAccountSetting_Radio"
+                        control={
+                            <RadioInput
+                                id="mx_media_previews_on"
+                                checked={currentMediaPreview.media_previews === MediaPreviewValue.On}
+                                onChange={mediaPreviewOnChangeOn}
+                            />
+                        }
+                    >
+                        <Label htmlFor="mx_media_previews_on">{_t("settings|media_preview|show_media")}</Label>
+                    </InlineField>
+                </Field>
+            )}
         </Root>
     );
 };

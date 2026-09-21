@@ -222,10 +222,29 @@ When the action bar belongs to an image-gallery group, Download and Hide act on 
 - `packages/shared-components/src/i18n/strings/en_EN.json`
   - Added `timeline|mab|download_all_in_gallery`, `timeline|mab|hide_all_in_gallery`
 
+## Media Hiding Disabled (`UIFeature.mediaHiding`)
+
+Element lets users hide individual images/videos/stickers (action bar **Hide**, which leaves a **Show** placeholder) and choose "Show media in timeline: Always / In private rooms / Never". Pointless in a company deployment, so a fork-specific UI feature flag turns all of it off. Upstream behaviour is unchanged unless the flag is set; both Glenda configs set `"UIFeature.mediaHiding": false` under `setting_defaults`.
+
+When disabled:
+- Media is always shown — including media hidden on a device before the flag was turned off (stored per-event overrides are ignored).
+- No **Hide** button in the action bar (so the gallery's "Hide all images in this group" never appears either).
+- Settings → Preferences hides the "Show media in timeline" choices (the invite-avatar toggle and invite rules stay); Room settings → General hides the "Moderation and safety" section, whose only control is that choice.
+
+**Files changed:**
+
+- `apps/web/src/settings/UIFeature.ts` — `UIFeature.MediaHiding = "UIFeature.mediaHiding"`
+- `apps/web/src/settings/Settings.tsx` — setting declaration (config level, default `true`)
+- `apps/web/src/utils/media/mediaVisibility.ts` — `computeMediaVisibility()` returns `true` when the flag is off (single choke point for `getMediaVisibility()` and the `useMediaVisible()` hook)
+- `apps/web/src/viewmodels/room/EventTileActionBarViewModel.ts` — `showHide` also requires the flag
+- `apps/web/src/components/views/settings/tabs/user/MediaPreviewAccountSettings.tsx` — hides the media preview radio group when the flag is off
+- `apps/web/src/components/views/settings/tabs/room/GeneralRoomSettingsTab.tsx` — hides the room-level "Moderation and safety" subsection when the flag is off
+- Tests: `apps/web/src/utils/media/mediaVisibility.test.ts` (new), a case in `EventTileActionBarViewModel.test.ts`
+
 ## Deployment Config, Branding and CI
 
-- `apps/web/config.sample.json` — Glenda homeserver (`glenda-studio-chat.com`), `default_theme: glenda-dark`, bubble layout, message previews, always-show timestamps, no breadcrumbs, labs hidden, video rooms off, **Element Call disabled** (`element_call.disable: true`)
-- `apps/desktop/glenda-studio/config.json` — desktop build config (copied to `apps/web/config.json` by CI): same server/theme plus auto-launch, hidden join/leave/name/avatar changes, `update_base_url`, **Element Call disabled**
+- `apps/web/config.sample.json` — Glenda homeserver (`glenda-studio-chat.com`), `default_theme: glenda-dark`, bubble layout, message previews, always-show timestamps, no breadcrumbs, media hiding off, labs hidden, video rooms off, **Element Call disabled** (`element_call.disable: true`)
+- `apps/desktop/glenda-studio/config.json` — desktop build config (copied to `apps/web/config.json` by CI): same server/theme plus auto-launch, hidden join/leave/name/avatar changes, media hiding off, `update_base_url`, **Element Call disabled**
 - `apps/desktop/glenda-studio/build.json` — desktop variant config (currently identical to stock Element)
 - `apps/desktop/package.json` — version `<upstream>-glenda.<n>` (e.g. `1.12.28-glenda.1`); bump `<n>` for each fork release so Squirrel auto-update sees a newer version
 - `.github/workflows/build_glenda_prepare.yaml`, `build_glenda_windows.yaml` *(new)* — build the web app with the Glenda config and package the Windows (Squirrel) desktop app on push to the release branch

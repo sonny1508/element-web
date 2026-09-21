@@ -37,6 +37,7 @@ import PosthogTrackers from "../../PosthogTrackers";
 import { shouldDisplayReply } from "../../utils/Reply";
 import { MediaEventHelper } from "../../utils/MediaEventHelper";
 import SettingsStore from "../../settings/SettingsStore";
+import { UIFeature } from "../../settings/UIFeature";
 import { type SettingKey } from "../../settings/Settings";
 import { getMediaVisibility, setMediaVisibility } from "../../utils/media/mediaVisibility";
 import { FileDownloader } from "../../utils/FileDownloader";
@@ -231,7 +232,11 @@ export class EventTileActionBarViewModel
 
         return {
             showDownload: contentActionable && Boolean(mediaHelper) && localState.canDownload,
-            showHide: contentActionable && MediaEventHelper.canHide(mxEvent) && getMediaVisibility(mxEvent, client),
+            showHide:
+                contentActionable &&
+                SettingsStore.getValue(UIFeature.MediaHiding) &&
+                MediaEventHelper.canHide(mxEvent) &&
+                getMediaVisibility(mxEvent, client),
             isDownloadEncrypted: mediaHelper?.media.isEncrypted ?? false,
             isDownloadLoading: localState.isDownloadLoading,
         };

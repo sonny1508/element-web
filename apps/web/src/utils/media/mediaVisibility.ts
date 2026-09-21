@@ -10,6 +10,7 @@ import { JoinRule, type MatrixClient, type MatrixEvent } from "matrix-js-sdk/src
 import { type MediaPreviewConfig, MediaPreviewValue } from "../../@types/media_preview";
 import { SettingLevel } from "../../settings/SettingLevel";
 import SettingsStore from "../../settings/SettingsStore";
+import { UIFeature } from "../../settings/UIFeature";
 
 /**
  * Determine whether a room should be treated as private when applying media preview defaults.
@@ -36,6 +37,7 @@ function isRoomPrivate(client: MatrixClient, roomId?: string): boolean {
  * Resolve whether media for a single event should be shown.
  *
  * Precedence is:
+ * 0. If media hiding is disabled for this deployment (`UIFeature.mediaHiding`), always show media
  * 1. An explicit per-event override stored in `showMediaEventIds`
  * 2. Always show media in events sent by the current user
  * 3. Fall back to the room-level `mediaPreviewConfig` policy
@@ -56,6 +58,11 @@ export function computeMediaVisibility(
     sender: string | undefined,
     roomIsPrivate: boolean,
 ): boolean {
+    // Also ignores overrides stored before the feature was disabled, so nothing stays hidden.
+    if (!SettingsStore.getValue(UIFeature.MediaHiding)) {
+        return true;
+    }
+
     const explicitEventVisibility = eventId ? eventVisibility[eventId] : undefined;
 
     if (explicitEventVisibility !== undefined) {

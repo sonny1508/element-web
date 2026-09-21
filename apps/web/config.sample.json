@@ -10,7 +10,8 @@
         "breadcrumbs": false,
         "layout": "bubble",
         "RoomList.showMessagePreview": true,
-        "alwaysShowTimestamps": true
+        "alwaysShowTimestamps": true,
+        "UIFeature.mediaHiding": false
     },
     "show_labs_settings": false,
     "features": {

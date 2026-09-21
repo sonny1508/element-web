@@ -26,6 +26,12 @@ export const enum UIFeature {
     TimelineEnableRelativeDates = "UIFeature.timelineEnableRelativeDates",
     AllowCreatingPublicRooms = "UIFeature.allowCreatingPublicRooms",
     AllowCreatingPublicSpaces = "UIFeature.allowCreatingPublicSpaces",
+    /**
+     * Fork-specific (Glenda Studio): whether media can be hidden, either per message (the action bar's
+     * Hide button / the "Show" placeholder) or via the "Show media in timeline" preference. When
+     * disabled, media is always shown.
+     */
+    MediaHiding = "UIFeature.mediaHiding",
 }
 
 export { UIComponent } from "@element-hq/element-web-module-api";

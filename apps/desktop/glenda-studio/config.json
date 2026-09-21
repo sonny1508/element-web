@@ -15,7 +15,8 @@
         "alwaysShowTimestamps": true,
         "showJoinLeaves": false,
         "showDisplaynameChanges": false,
-        "showAvatarChanges": false
+        "showAvatarChanges": false,
+        "UIFeature.mediaHiding": false
     },
     "show_labs_settings": false,
     "update_base_url": "https://update.glenda-studio-chat.com/",

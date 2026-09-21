@@ -20,6 +20,8 @@ import { SettingsSubsection } from "../../shared/SettingsSubsection";
 import SettingsTab from "../SettingsTab";
 import { SettingsSection } from "../../shared/SettingsSection";
 import { MediaPreviewAccountSettings } from "../user/MediaPreviewAccountSettings";
+import SettingsStore from "../../../../../settings/SettingsStore";
+import { UIFeature } from "../../../../../settings/UIFeature";
 
 interface IProps {
     room: Room;
@@ -85,9 +87,12 @@ export default class GeneralRoomSettingsTab extends React.Component<IProps, ISta
                 </SettingsSection>
 
                 <SettingsSection heading={_t("room_settings|general|other_section")}>
-                    <SettingsSubsection heading={_t("common|moderation_and_safety")} legacy={false}>
-                        <MediaPreviewAccountSettings roomId={room.roomId} />
-                    </SettingsSubsection>
+                    {/* The per-room media preview choice is the only control here */}
+                    {SettingsStore.getValue(UIFeature.MediaHiding) && (
+                        <SettingsSubsection heading={_t("common|moderation_and_safety")} legacy={false}>
+                            <MediaPreviewAccountSettings roomId={room.roomId} />
+                        </SettingsSubsection>
+                    )}
                     {leaveSection}
                 </SettingsSection>
             </SettingsTab>
