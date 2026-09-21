@@ -216,11 +216,15 @@
                 border-radius: 0;
             }
 
-            // Single image: neutralise ImageBodyView inline sizing so it
-            // respects the bubble width instead of inflating it.
+            // Single image: neutralise ImageBodyView's inline height sizing.
+            // The inline `max-width: <N>px` must be kept: ImageBodyView sizes
+            // the container as `width: min(100%, <N>px)` (so it never exceeds
+            // the bubble), and percentages count as `auto` while the
+            // fit-content bubble measures its content. Without the pixel cap
+            // the bubble sizes itself to the image file's natural width (up to
+            // its 500px max) and leaves empty space beside the image.
             .mx_MImageBody_single {
                 .mx_ImageBody_container {
-                    max-width: 100% !important;
                     max-height: 100% !important;
                     aspect-ratio: unset !important;
                 }

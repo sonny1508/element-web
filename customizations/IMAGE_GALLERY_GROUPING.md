@@ -241,7 +241,7 @@ The bubble (`.mx_EventTile_gallery_bubble`) has `max-width: 500px` (content-box)
 
 `ImageBodyView` applies aggressive inline sizing (width, max-width, max-height, aspect-ratio) on its container. Inside the gallery, these must be neutralized so images respect the grid cell dimensions:
 
-- **Single image** (`.mx_MImageBody_single`): `max-width: 100% !important`, `aspect-ratio: unset !important`, `object-fit: contain`
+- **Single image** (`.mx_MImageBody_single`): `max-height: 100% !important`, `aspect-ratio: unset !important`, `object-fit: contain`. The container's inline `max-width: <N>px` is deliberately **not** overridden: `ImageBodyView` sizes it as `width: min(100%, <N>px)`, and percentages count as `auto` when the `fit-content` bubble measures its content, so without that pixel cap the bubble grows to the image file's natural width (up to 500px) and leaves empty space beside the image.
 - **Grid cells** (`.mx_MImageGallery_cell`): all image-body sizing forced to `100%/100%`, inner sizing div overridden via `:has()` selector, `object-fit: cover` on the thumbnail
 
 The `!important` declarations are necessary because `ImageBodyView` sets inline styles.
