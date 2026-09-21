@@ -1,0 +1,52 @@
+{
+  "name": "Selenized dark theme",
+  "is_dark": true,
+  "fonts": {
+    "general": "Inter, sans-serif",
+    "monospace": "'JetBrains Mono', 'Courier New', monospace"
+  },
+  "colors": {
+    "accent-color": "#41c7b9",
+    "primary-color": "#4695f7",
+    "warning-color": "#fa5750",
+    "sidebar-color": "#103c48",
+    "roomlist-background-color": "#184956",
+    "roomlist-text-color": "#dbb32d",
+    "roomlist-text-secondary-color": "#FFFFFF",
+    "roomlist-highlights-color": "#2d5b69",
+    "roomlist-separator-color": "#2d5b69",
+    "timeline-background-color": "#2d5b69",
+    "timeline-text-color": "#FFFFFF",
+    "secondary-content": "#FFFFFF",
+    "tertiary-content": "#FFFFFF",
+    "timeline-text-secondary-color": "#72898f",
+    "timeline-highlights-color": "#184956",
+    "reaction-row-button-selected-bg-color": "#4695f7",
+    "username-colors": [
+      "#4695f7",
+      "#41c7b9",
+      "#70b433",
+      "#ad8900",
+      "#dbb32d",
+      "#ed4a46",
+      "#e67f43",
+      "#af88eb"
+    ],
+    "avatar-background-colors": [
+      "#4695f7",
+      "#41c7b9",
+      "#70b433",
+      "#ad8900",
+      "#dbb32d",
+      "#ed4a46",
+      "#e67f43",
+      "#af88eb"
+    ]
+  },
+  "compound": {
+    "--cpd-color-icon-accent-tertiary": "#41c7b9",
+    "--cpd-color-text-action-accent": "#41c7b9",
+    "--cpd-color-bg-subtle-secondary": "#184956",
+    "--cpd-color-bg-canvas-default": "#2d5b69"
+  }
+}
