@@ -41,7 +41,11 @@ import UserActivity from "./UserActivity";
 import { mediaFromMxc } from "./customisations/Media";
 import ErrorDialog from "./components/views/dialogs/ErrorDialog";
 import { type SDKContextClass } from "./contexts/SDKContextClass.ts";
-import { localNotificationsAreSilenced, createLocalNotificationSettingsIfNeeded } from "./utils/notifications";
+import {
+    localNotificationsAreSilenced,
+    createLocalNotificationSettingsIfNeeded,
+    createPollStartNotificationRuleIfNeeded,
+} from "./utils/notifications";
 import { getIncomingCallToastKey, getNotificationEventSendTs, IncomingCallToast } from "./toasts/IncomingCallToast";
 import ToastStore from "./stores/ToastStore";
 import { stripPlainReply } from "./utils/Reply";
@@ -491,6 +495,8 @@ export default class Notifier extends TypedEventEmitter<keyof EmittedEvents, Emi
         // wait for first non-cached sync to complete
         if (![SyncState.Stopped, SyncState.Error].includes(state) && !data?.fromCache) {
             void createLocalNotificationSettingsIfNeeded(this.sdkContext.client);
+            // Ensure a fresh poll notifies the room like any other message.
+            void createPollStartNotificationRuleIfNeeded(this.sdkContext.client);
         }
     };
 

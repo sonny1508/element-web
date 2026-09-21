@@ -55,6 +55,7 @@ import { hasThreadSummary } from "../../utils/EventUtils";
 import { type BaseGrouper } from "./grouper/BaseGrouper";
 import { MainGrouper } from "./grouper/MainGrouper";
 import { CreationGrouper } from "./grouper/CreationGrouper";
+import { ImageGalleryGrouper } from "./grouper/ImageGalleryGrouper";
 import { _t } from "../../languageHandler";
 import { getLateEventInfo } from "./grouper/LateEventGrouper";
 import { DateSeparatorViewModel } from "../../viewmodels/room/timeline/DateSeparatorViewModel";
@@ -242,7 +243,9 @@ export default class MessagePanel extends React.Component<IProps, IState> {
 
     // opaque readreceipt info for each userId; used by ReadReceiptMarker
     // to manage its animations
-    private readReceiptMap: { [userId: string]: IReadReceiptPosition } = {};
+    // Exposed publicly so custom groupers (e.g. ImageGalleryGrouper) can render
+    // ReadReceiptGroup for the events they aggregate.
+    public readReceiptMap: { [userId: string]: IReadReceiptPosition } = {};
 
     // Track read receipts by event ID. For each _shown_ event ID, we store
     // the list of read receipts to display:
@@ -256,7 +259,9 @@ export default class MessagePanel extends React.Component<IProps, IState> {
     // This is recomputed on each render. It's only stored on the component
     // for ease of passing the data around since it's computed in one pass
     // over all events.
-    private readReceiptsByEvent: Map<string, IReadReceiptProps[]> = new Map();
+    // Exposed publicly so custom groupers can look up receipts for the events
+    // they aggregate.
+    public readReceiptsByEvent: Map<string, IReadReceiptProps[]> = new Map();
 
     // Track read receipts by user ID. For each user ID we've ever shown a
     // a read receipt for, we store an object:
@@ -478,7 +483,7 @@ export default class MessagePanel extends React.Component<IProps, IState> {
         }
     }
 
-    private isUnmounting = (): boolean => {
+    public isUnmounting = (): boolean => {
         return this.unmounted;
     };
 
@@ -488,6 +493,11 @@ export default class MessagePanel extends React.Component<IProps, IState> {
 
     // TODO: Implement granular (per-room) hide options
     public shouldShowEvent(mxEv: MatrixEvent, forceHideEvents = false): boolean {
+        // Hide all m.room.member state events (joins, leaves, avatar changes, etc.)
+        if (mxEv.getType() === "m.room.member") {
+            return false;
+        }
+        
         if (this.props.hideThreadedMessages && this.props.room) {
             const { shouldLiveInRoom } = this.props.room.eventShouldLiveIn(mxEv, this.props.events);
             if (!shouldLiveInRoom) {
@@ -1113,7 +1123,7 @@ export interface WrappedEvent {
 }
 
 // all the grouper classes that we use, ordered by priority
-const groupers = [CreationGrouper, MainGrouper];
+const groupers = [ImageGalleryGrouper, CreationGrouper, MainGrouper];
 
 /**
  * Look through the supplied list of WrappedEvent, and return the first

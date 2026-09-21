@@ -1293,11 +1293,12 @@ export const SETTINGS: Settings = {
         supportedLevels: LEVELS_ACCOUNT_SETTINGS,
         default: {
             [MetaSpace.Home]: true,
+            [MetaSpace.Orphans]: true,
         },
     },
     "Spaces.showPeopleInSpace": {
         supportedLevels: [SettingLevel.ROOM_ACCOUNT],
-        default: true,
+        default: false,
     },
     "developerMode": {
         displayName: _td("devtools|developer_mode"),

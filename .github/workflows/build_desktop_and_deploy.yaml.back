@@ -2,7 +2,6 @@ name: Build and Deploy
 on:
     # Nightly build
     schedule:
-        - cron: "0 9 * * *"
     # Release build
     release:
         types: [published]

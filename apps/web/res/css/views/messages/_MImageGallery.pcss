@@ -1,0 +1,458 @@
+/*
+ * _MImageGallery.pcss
+ *
+ * Styles for the image gallery grid and the bubble wrapper used
+ * by ImageGalleryGrouper (both single images and multi-image grids).
+ */
+
+// The gallery sits inside a normal EventTile content area.
+// Width is driven by the fixed-pixel grid columns set in the component;
+// max-width prevents overflow on narrow viewports.
+.mx_MImageGallery {
+    max-width: 500px;
+    overflow: hidden;
+}
+
+// -------------------------------------------------------------------------
+// Grid container
+// -------------------------------------------------------------------------
+
+.mx_MImageGallery_grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 2px;
+    border-radius: 8px;
+    overflow: hidden;
+
+    // Expanded mode: let rows grow naturally.
+    &--expanded {
+        grid-template-rows: unset;
+        grid-auto-rows: 1fr;
+
+        .mx_MImageGallery_cell {
+            aspect-ratio: 1 / 1;
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
+// Individual cell
+// -------------------------------------------------------------------------
+
+.mx_MImageGallery_cell {
+    position: relative;
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+    // Each cell is square so the grid has consistent proportions
+    aspect-ratio: 1 / 1;
+
+    .mx_ImageBody {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .mx_ImageBody_container {
+        max-width: 100% !important;
+        max-height: 100% !important;
+        width: 100% !important;
+        height: 100% !important;
+        aspect-ratio: unset !important;
+    }
+
+    // Override the media wrapper <div> that ImageBodyView places around the
+    // <img> (a CSS-module class, so it can't be targeted by name). Without
+    // this the image's intrinsic size can inflate the cell. :has() targets
+    // only the wrapper that actually contains the image (or the hidden-media
+    // button), not the loading placeholder sibling.
+    .mx_ImageBody_container > div:has(> .mx_ImageBody_image),
+    .mx_ImageBody_container > div:has(> div > button) {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+    }
+
+    // Hidden-media state: the inner box carries inline width/height from
+    // the view model; stretch it to fill the square cell instead.
+    .mx_ImageBody_container > div > div:has(> button) {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .mx_ImageBody_image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        max-width: unset !important;
+        max-height: unset !important;
+        display: block;
+    }
+
+    > .mx_ImageBody > a {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+// -------------------------------------------------------------------------
+// "+N more" overlay on the last visible cell
+// -------------------------------------------------------------------------
+
+.mx_MImageGallery_overflow {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+
+    &:hover {
+        background: rgba(0, 0, 0, 0.45);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--cpd-color-border-focused, #0dbd8b);
+        outline-offset: -2px;
+    }
+}
+
+// -------------------------------------------------------------------------
+// Gallery EventTile wrapper
+// -------------------------------------------------------------------------
+
+.mx_EventTile_gallery {
+    margin-top: 4px;
+    margin-bottom: 4px;
+
+    // Group (default) layout
+    &[data-layout="group"] {
+        padding-left: 64px;
+        padding-right: 8px;
+
+        > .mx_EventTile_avatar {
+            position: absolute;
+            z-index: 9;
+            inset-block-start: 14px;
+            inset-inline-start: var(--cpd-space-2x);
+        }
+
+        .mx_EventTile_gallery_actionBar {
+            position: absolute;
+            z-index: 10;
+            user-select: none;
+            inset-block-start: -28px;
+            inset-inline-end: 8px;
+        }
+    }
+
+    // Bubble layout
+    &[data-layout="bubble"] {
+        --cornerRadius: 12px;
+        --gutterSize: 11px;
+
+        // No max-width / margin-inline: auto here — the <li> must be full-width
+        // (same as standard EventBubbleTile) so that mx_EventTile_msgOption's
+        // read-receipt anchors to the full-width <li> edge, producing the same
+        // visual position as text-bubble receipts.  Alignment (left/right) is
+        // handled by mx_EventTile_gallery_lineWrapper below, which mirrors the
+        // role of mx_EventTile_line in the standard tile.
+        margin-inline-start: var(--EventTile_bubble-margin-inline-start, 49px);
+        margin-inline-end: var(--EventTile_bubble-margin-inline-end, 60px);
+        position: relative;
+
+        // Hover highlight — same visual as EventBubbleTile but without
+        // z-index: -1 which breaks inside overflow:hidden stacking contexts.
+        &::before {
+            content: "";
+            position: absolute;
+            top: -1px;
+            bottom: -1px;
+            left: calc(-1 * var(--EventTile_bubble-margin-inline-start, 49px));
+            right: calc(-1 * var(--EventTile_bubble-margin-inline-end, 60px));
+            border-radius: 4px;
+            pointer-events: none;
+        }
+
+        &:hover::before {
+            background: $eventbubble-bg-hover;
+            z-index: 0;
+        }
+
+        // Bubble must sit above the hover highlight.
+        // Also the positioning ancestor for .mx_GalleryActionBar.
+        .mx_EventTile_gallery_bubble {
+            position: relative;
+            z-index: 1;
+            background: $eventbubble-others-bg;
+            border-radius: var(--cornerRadius);
+            overflow: hidden;
+            // Padding between images and bubble border
+            padding: var(--gutterSize);
+            // Cap the content area to match the grid width (500px)
+            // so captions wrap instead of inflating the bubble.
+            max-width: 500px;
+            width: fit-content;
+            // Match the negative inline margins that standard EventBubbleTile
+            // applies to .mx_EventTile_line so the bubble visually starts
+            // behind the avatar instead of clearing it.
+            margin-inline-start: var(--EventTile_bubble_line-margin-inline-start, -9px);
+            margin-inline-end: var(--EventTile_bubble_line-margin-inline-end, -12px);
+
+            // The bubble border-radius clips corners; strip the grid's own
+            .mx_MImageGallery_grid {
+                border-radius: 0;
+            }
+
+            // Single image: neutralise ImageBodyView inline sizing so it
+            // respects the bubble width instead of inflating it.
+            .mx_MImageBody_single {
+                .mx_ImageBody_container {
+                    max-width: 100% !important;
+                    max-height: 100% !important;
+                    aspect-ratio: unset !important;
+                }
+
+                .mx_ImageBody_image {
+                    width: 100%;
+                    height: auto;
+                    object-fit: contain;
+                    max-width: 100%;
+                    max-height: unset;
+                    display: block;
+                }
+            }
+
+            // Multi-image grid: cells handle their own sizing via
+            // aspect-ratio on .mx_MImageGallery_cell, so just
+            // kill inline sizes on ImageBodyView within cells.
+            .mx_MImageGallery_cell {
+                .mx_ImageBody,
+                .mx_ImageBody > a {
+                    margin: 0;
+                    padding: 0;
+                    max-width: unset !important;
+                    max-height: unset !important;
+                    height: 100%;
+                    width: 100%;
+                }
+
+                .mx_ImageBody_container {
+                    max-width: 100% !important;
+                    max-height: 100% !important;
+                    width: 100% !important;
+                    height: 100% !important;
+                    aspect-ratio: unset !important;
+                }
+            }
+
+            // Caption: small gap between grid and text so the bubble
+            // stays close in size to the no-caption variant.
+            .mx_EventTile_galleryCaption {
+                padding-top: 4px;
+            }
+        }
+
+        // Own messages: right-align the lineWrapper + self background
+        &[data-self="true"] {
+            .mx_EventTile_gallery_lineWrapper {
+                // Mirrors margin-inline-start: auto on mx_EventTile_line for
+                // own messages in standard EventBubbleTile — pushes the narrow
+                // wrapper (and thus the bubble) to the right edge of the <li>.
+                margin-inline-start: auto;
+            }
+
+            .mx_EventTile_gallery_bubble {
+                background: $eventbubble-self-bg;
+            }
+
+            .mx_EventTile_galleryCaption {
+                text-align: right;
+            }
+        }
+
+        // Others' messages: wrapper is left-aligned by default — no extra rule.
+
+        // DM (hideSender=true): keep the sender-name row taking layout space
+        // so the bubble still drops below the avatar's vertical centre, but
+        // hide the name itself. We deliberately diverge from upstream's
+        // `mx_EventTile_noSender` behaviour (which collapses the row + bumps
+        // the avatar to top: -19px) so the DM gallery bubble aligns the same
+        // way as a group bubble. `visibility: hidden` preserves the box
+        // dimensions; `display: none` would collapse them.
+        &[data-hide-sender="true"] > .mx_DisambiguatedProfile {
+            visibility: hidden;
+        }
+
+        // ---------------------------------------------------------------------
+        // Tile chrome: avatar, sender, action bar, read receipts, thread summary
+        // ---------------------------------------------------------------------
+        // Upstream v1.12.2x moved the bubble-layout geometry for these pieces
+        // out of the global _EventBubbleTile.pcss / _MessageActionBar.pcss
+        // rules and into the shared-components EventTileView CSS module, where
+        // it is applied to wrapper "slot" elements (slotAvatar, slotSender,
+        // slotActionBar, slotReceipt, …). The gallery tile renders its own DOM
+        // rather than an EventTileView, so it carries equivalent rules here,
+        // using the same values as the module.
+
+        > .mx_EventTile_avatar {
+            position: absolute;
+            z-index: 9;
+            inset-block-start: 6px;
+            inset-inline-start: -36px;
+            line-height: 0;
+            border: 4px solid var(--cpd-color-bg-canvas-default);
+            border-radius: 50%;
+
+            > * {
+                border-radius: 50%;
+                box-shadow: 0 0 0 3px var(--cpd-color-bg-canvas-default);
+            }
+        }
+
+        &:hover > .mx_EventTile_avatar {
+            border-color: var(--event-tile-bubble-hover-background);
+
+            > * {
+                box-shadow: 0 0 0 3px var(--event-tile-bubble-hover-background);
+            }
+        }
+
+        &[data-self="true"] > .mx_EventTile_avatar {
+            inset-block-start: -19px;
+            inset-inline-start: auto;
+            inset-inline-end: -38px;
+        }
+
+        // Sender name row. Own messages hide it (the self avatar floats above
+        // the bubble instead); DMs keep the row's height but hide the text —
+        // see the data-hide-sender rule above.
+        > .mx_DisambiguatedProfile {
+            width: fit-content;
+            max-width: 70%;
+            line-height: $font-18px;
+            position: relative;
+            inset-block-start: -2px;
+            inset-inline-start: 2px;
+            font-size: var(--cpd-font-size-body-md);
+            white-space: normal;
+        }
+
+        &[data-self="true"] > .mx_DisambiguatedProfile {
+            display: none;
+        }
+
+        // Anchored to mx_EventTile_gallery_lineWrapper (≈ the bubble's edges).
+        .mx_EventTile_gallery_actionBar {
+            position: absolute;
+            z-index: 10;
+            user-select: none;
+            inset-block-start: -28px;
+            inset-inline-start: calc(100% - 28px - 2 * 3px);
+            inset-inline-end: auto;
+
+            // Safe area so the pointer can travel from the bubble into the bar
+            // (and to its tooltips) without leaving the hover region.
+            &::before {
+                content: "";
+                position: absolute;
+                width: calc(10px + 48px + 100% + 8px);
+                height: calc(20px + 100%);
+                inset-block-start: -12px;
+                inset-inline-start: -58px;
+                z-index: -1;
+                cursor: initial;
+            }
+        }
+
+        &[data-self="true"] .mx_EventTile_gallery_actionBar {
+            inset-inline-start: auto;
+            inset-inline-end: 0;
+        }
+
+        // mx_EventTile_msgOption is a direct child of the full-width <li>, so
+        // the receipt lands at the same place as a standard text bubble's.
+        > .mx_EventTile_msgOption {
+            position: absolute;
+            z-index: 1;
+            inset-block-end: -3px;
+            inset-inline-end: -78px;
+        }
+
+        .mx_EventTile_gallery_threadInfo {
+            display: flex;
+            width: fit-content;
+            max-width: 100%;
+            margin-inline-start: calc(-1 * var(--gutterSize));
+            margin-inline-end: auto;
+        }
+
+        &[data-self="true"] .mx_EventTile_gallery_threadInfo {
+            margin-inline-start: auto;
+            margin-inline-end: calc(-1 * var(--gutterSize));
+        }
+    }
+}
+
+.mx_EventTile_galleryCaption {
+    font-size: $font-14px;
+    line-height: $font-20px;
+    color: $primary-content;
+    word-break: break-word;
+}
+
+// -------------------------------------------------------------------------
+// Reactions row inside a gallery tile
+// -------------------------------------------------------------------------
+
+.mx_EventTile_gallery > .mx_EventTile_footer {
+    position: relative;
+    z-index: 1;
+    padding: 0 var(--gutterSize, 11px);
+    display: flex;
+    align-items: center;
+    margin-block: var(--cpd-space-1-5x);
+}
+
+.mx_EventTile_gallery[data-self="true"] > .mx_EventTile_footer {
+    justify-content: flex-end;
+}
+
+// -------------------------------------------------------------------------
+// lineWrapper — mirrors mx_EventTile_line in standard EventBubbleTile
+// -------------------------------------------------------------------------
+// This narrow, positioned container wraps the bubble + action bar so that:
+//   • mx_EventTile_gallery_actionBar's `inset-inline-start: calc(100% - …)`
+//     (for others' messages) anchors to the wrapper's right edge (≈ bubble
+//     right edge) rather than to the full-width <li>.
+//   • mx_EventTile_msgOption stays OUTSIDE this wrapper as a direct child
+//     of the <li>, so its `inset-inline-end: -78px` anchors to the
+//     full-width <li> — identical to standard text-bubble receipts.
+
+.mx_EventTile_gallery_lineWrapper {
+    position: relative;
+    width: fit-content;
+}
+
+// -------------------------------------------------------------------------
+// Thread-panel receipt position correction
+// -------------------------------------------------------------------------
+// In thread view the gallery <li> is full-width with margin-inline: 36px
+// each side (--BaseCard_EventTile-spacing-inline), so -78px from the <li>'s
+// right edge would land the receipt outside the panel. -36px + 6px = -30px
+// places the receipt's right edge 6px inside the thread panel's border.
+.mx_ThreadView .mx_EventTile_gallery[data-layout="bubble"] > .mx_EventTile_msgOption {
+    inset-inline-end: calc(-1 * var(--BaseCard_EventTile-spacing-inline, 36px) + 6px);
+}

@@ -116,6 +116,42 @@ $button-gap: var(--cpd-space-3x);
     background: #21262c; /* same on all themes */
 }
 
+.mx_ImageView_nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    pointer-events: initial;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(33, 38, 44, 0.7);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 150ms ease;
+
+    &:hover {
+        opacity: 1;
+    }
+
+    svg {
+        width: 28px;
+        height: 28px;
+        color: #ffffff;
+    }
+}
+
+.mx_ImageView_nav_prev {
+    left: 24px;
+}
+
+.mx_ImageView_nav_next {
+    right: 24px;
+}
+
 @media (prefers-reduced-motion) {
     .mx_ImageView_image_animating {
         transition: none !important;

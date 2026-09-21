@@ -115,8 +115,11 @@ const getMyReactions = (reactions: Relations | null | undefined, userId?: string
  * Props for the {@link ReactionsRowAdapter} component.
  */
 interface ReactionsRowAdapterProps {
-    /** View model backing the event tile reaction row. */
-    eventTileViewModel: EventTileViewModel;
+    /**
+     * Owner of the reaction row child view model. Normally the tile's {@link EventTileViewModel}; narrowed to the
+     * two methods used here so custom tiles (e.g. the image gallery grouper) can supply their own owner.
+     */
+    eventTileViewModel: Pick<EventTileViewModel, "getReactionsRowViewModel" | "releaseReactionsRowViewModel">;
     /** Matrix event whose reactions are being rendered. */
     mxEvent: MatrixEvent;
     /** Current reaction relations for the event, if available. */

@@ -16,7 +16,12 @@ import {
     type IMarkedUnreadEvent,
     type EmptyObject,
     EventType,
+    M_POLL_START,
+    PushRuleKind,
+    ConditionKind,
+    PushRuleActionName,
 } from "matrix-js-sdk/src/matrix";
+import { logger } from "matrix-js-sdk/src/logger";
 import { type IndicatorIcon } from "@vector-im/compound-web";
 
 import SettingsStore from "../settings/SettingsStore";
@@ -73,6 +78,54 @@ export async function createLocalNotificationSettingsIfNeeded(cli: MatrixClient)
         await cli.setAccountData(eventType, {
             is_silenced: isSilenced,
         });
+    }
+}
+
+/**
+ * Custom push rule id (fork-specific) used to notify on poll creation.
+ * Poll-start events use the `org.matrix.msc3381.poll.start` event type, which no
+ * default push rule matches, so out of the box creating a poll notifies nobody.
+ * This underride rule mirrors `.m.rule.message` so a new poll notifies the room
+ * just like a normal message. Only `m.poll.start` is matched, so votes
+ * (`m.poll.response`) and poll closure (`m.poll.end`) stay silent.
+ */
+export const POLL_START_NOTIFICATION_RULE_ID = "im.uriel.rule.poll_start";
+
+/**
+ * Ensures the logged-in account has a push rule that notifies for poll creation.
+ * Safe to call repeatedly: it no-ops once the rule is present. Errors are logged
+ * and swallowed so a failure here never blocks sync.
+ */
+export async function createPollStartNotificationRuleIfNeeded(cli: MatrixClient): Promise<void> {
+    if (cli.isGuest()) {
+        return;
+    }
+
+    // Wait until push rules have been loaded; this is retried on each sync.
+    const underride = cli.pushRules?.global?.underride;
+    if (!underride) {
+        return;
+    }
+
+    if (underride.some((rule) => rule.rule_id === POLL_START_NOTIFICATION_RULE_ID)) {
+        return;
+    }
+
+    try {
+        await cli.addPushRule("global", PushRuleKind.Underride, POLL_START_NOTIFICATION_RULE_ID, {
+            conditions: [
+                {
+                    kind: ConditionKind.EventMatch,
+                    key: "type",
+                    // The event type actually sent for poll creation (unstable MSC3381 prefix).
+                    pattern: M_POLL_START.name,
+                },
+            ],
+            // `notify` only, matching `.m.rule.message`: grey badge + push, no sound.
+            actions: [PushRuleActionName.Notify],
+        });
+    } catch (e) {
+        logger.warn("Failed to create poll-start notification push rule", e);
     }
 }
 

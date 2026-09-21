@@ -68,6 +68,7 @@ export class DialogOpener {
                 Modal.createDialog(ForwardDialog, {
                     matrixClient: this.matrixClient,
                     event: payload.event,
+                    extraEvents: payload.extraEvents,
                     permalinkCreator: payload.permalinkCreator,
                 });
                 break;

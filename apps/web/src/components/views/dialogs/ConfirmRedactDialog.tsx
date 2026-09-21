@@ -46,9 +46,12 @@ export default class ConfirmRedactDialog extends React.Component<IProps> {
 
 export function createRedactEventDialog({
     mxEvent,
+    extraEvents,
     onCloseDialog = () => {},
 }: {
     mxEvent: MatrixEvent;
+    /** Additional events to redact together (e.g. all images in a gallery group). */
+    extraEvents?: MatrixEvent[];
     onCloseDialog?: () => void;
 }): void {
     const eventId = mxEvent.getId();
@@ -66,12 +69,26 @@ export function createRedactEventDialog({
         const cli = MatrixClientPeg.safeGet();
         const withRelTypes: Pick<IRedactOpts, "with_rel_types"> = {};
 
+        const eventsToRedact: MatrixEvent[] = [mxEvent, ...(extraEvents ?? [])];
+        // Deduplicate in case mxEvent is also present in extraEvents.
+        const seen = new Set<string>();
+        const uniqueEvents = eventsToRedact.filter((e) => {
+            const id = e.getId();
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+
         try {
             onCloseDialog?.();
-            await cli.redactEvent(roomId, eventId, undefined, {
-                ...(reason ? { reason } : {}),
-                ...withRelTypes,
-            });
+            await Promise.all(
+                uniqueEvents.map((e) =>
+                    cli.redactEvent(e.getRoomId()!, e.getId()!, undefined, {
+                        ...(reason ? { reason } : {}),
+                        ...withRelTypes,
+                    }),
+                ),
+            );
         } catch (e: any) {
             const code = e.errcode || e.statusCode;
             // only show the dialog if failing for something other than a network error

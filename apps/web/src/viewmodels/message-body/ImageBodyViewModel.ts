@@ -32,7 +32,7 @@ import { createReconnectedListener } from "../../utils/connection";
 import { DecryptError, DownloadError } from "../../utils/DecryptFile";
 import { BLURHASH_FIELD, createThumbnail } from "../../utils/image-media";
 import { isMimeTypeAllowed } from "../../utils/blobs";
-import ImageView from "../../components/views/elements/ImageView";
+import ImageView, { type GalleryImage } from "../../components/views/elements/ImageView";
 
 export interface ImageBodyViewModelProps {
     /**
@@ -499,7 +499,72 @@ export class ImageBodyViewModel
             };
         }
 
+        const galleryImages = this.buildGalleryImages(httpUrl);
+        if (galleryImages) {
+            params.images = galleryImages.images;
+            params.initialIndex = galleryImages.initialIndex;
+        }
+
         Modal.createDialog(ImageView, params, "mx_Dialog_lightbox", undefined, true);
+    }
+
+    /**
+     * Collects every image the same sender posted in this timeline (the thread's timeline when the
+     * image is in a thread) so the lightbox can step through them with Next/Previous.
+     * Returns null when there is nothing to navigate to.
+     */
+    private buildGalleryImages(currentHttpUrl: string): { images: GalleryImage[]; initialIndex: number } | null {
+        const { mxEvent } = this.props;
+        const roomId = mxEvent.getRoomId();
+        const sender = mxEvent.getSender();
+        const myEventId = mxEvent.getId();
+        if (!roomId || !sender || !myEventId) return null;
+
+        const room = MatrixClientPeg.get()?.getRoom(roomId);
+        if (!room) return null;
+
+        let timelineSet;
+        if (mxEvent.threadRootId) {
+            const thread = room.getThread(mxEvent.threadRootId);
+            if (!thread) return null;
+            timelineSet = thread.getUnfilteredTimelineSet();
+        } else {
+            timelineSet = room.getUnfilteredTimelineSet();
+        }
+
+        const imageEvents = timelineSet
+            .getTimelines()
+            .flatMap((t) => t.getEvents())
+            .filter(
+                (ev) =>
+                    ev.getType() === "m.room.message" &&
+                    ev.getSender() === sender &&
+                    ev.getContent()?.msgtype === "m.image",
+            );
+        if (imageEvents.length < 2) return null;
+
+        const images: GalleryImage[] = [];
+        let initialIndex = 0;
+        for (const evt of imageEvents) {
+            const evtContent = evt.getContent<ImageContent>();
+            const isCurrentEvent = evt.getId() === myEventId;
+            const evtSrc = isCurrentEvent ? currentHttpUrl : mediaFromContent(evtContent).srcHttp;
+            if (!evtSrc) continue;
+
+            if (isCurrentEvent) initialIndex = images.length;
+            images.push({
+                src: evtSrc,
+                name: evtContent.body || undefined,
+                width: evtContent.info?.w,
+                height: evtContent.info?.h,
+                fileSize: evtContent.info?.size,
+                mxEvent: evt,
+                permalinkCreator: this.props.permalinkCreator,
+            });
+        }
+
+        if (images.length < 2) return null;
+        return { images, initialIndex };
     }
 
     public onLinkClick = (event: MouseEvent<HTMLAnchorElement>): void => {

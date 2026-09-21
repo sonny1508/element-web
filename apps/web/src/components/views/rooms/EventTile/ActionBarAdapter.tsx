@@ -41,8 +41,11 @@ interface ActionBarEventTile {
  * Props for the {@link ActionBarAdapter} component.
  */
 interface ActionBarAdapterProps {
-    /** View model backing the event tile action bar. */
-    eventTileViewModel: EventTileViewModel;
+    /**
+     * Owner of the action bar child view model. Normally the tile's {@link EventTileViewModel}; narrowed to the
+     * two methods used here so custom tiles (e.g. the image gallery grouper) can supply their own owner.
+     */
+    eventTileViewModel: Pick<EventTileViewModel, "getActionBarViewModel" | "releaseActionBarViewModel">;
     /** Matrix event rendered by this tile. */
     mxEvent: MatrixEvent;
     /** Reaction relation state for the event, if available. */
@@ -61,6 +64,11 @@ interface ActionBarAdapterProps {
     toggleThreadExpanded: () => void;
     /** Looks up relation data for the current event. */
     getRelationsForEvent?: GetRelationsForEvent;
+    /**
+     * When this tile represents an image-gallery group, every event in the group. Download/Hide, Forward and
+     * Remove then act on the whole gallery rather than just the representative event.
+     */
+    galleryEvents?: MatrixEvent[];
 }
 
 /**
@@ -77,6 +85,7 @@ export function ActionBarAdapter({
     isQuoteExpanded,
     toggleThreadExpanded,
     getRelationsForEvent,
+    galleryEvents,
 }: Readonly<ActionBarAdapterProps>): JSX.Element {
     const roomContext = useContext(RoomContext);
     const { isCard } = useContext(CardContext);
@@ -101,6 +110,7 @@ export function ActionBarAdapter({
         onOptionsClick: handleOptionsClick,
         onReactionsClick: handleReactionsClick,
         getRelationsForEvent,
+        galleryEvents,
     });
 
     useEffect(() => {
@@ -121,6 +131,7 @@ export function ActionBarAdapter({
             onToggleThreadExpanded: toggleThreadExpanded,
             onOptionsClick: handleOptionsClick,
             onReactionsClick: handleReactionsClick,
+            galleryEvents,
         });
     }, [
         vm,
@@ -135,6 +146,7 @@ export function ActionBarAdapter({
         handleOptionsClick,
         handleReactionsClick,
         toggleThreadExpanded,
+        galleryEvents,
     ]);
 
     useEffect(() => {
@@ -166,6 +178,8 @@ export function ActionBarAdapter({
                 <MessageContextMenu
                     {...aboveLeftOf(optionsMenuAnchorRect)}
                     mxEvent={mxEvent}
+                    galleryEvents={galleryEvents}
+                    reactions={reactions}
                     permalinkCreator={permalinkCreator}
                     eventTileOps={eventTileOps}
                     collapseReplyChain={collapseReplyChain}

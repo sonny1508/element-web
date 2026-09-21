@@ -20,8 +20,11 @@ import { type EventTileViewModel } from "../../../../viewmodels/room/timeline/ev
  * Props for the {@link ThreadSummaryAdapter} component.
  */
 interface ThreadSummaryAdapterProps extends Omit<React.ComponentPropsWithoutRef<"button">, "aria-label" | "onClick"> {
-    /** View model backing the thread summary tile. */
-    eventTileViewModel: EventTileViewModel;
+    /**
+     * Owner of the thread summary child view model. Normally the tile's {@link EventTileViewModel}; narrowed to the
+     * two methods used here so custom tiles (e.g. the image gallery grouper) can supply their own owner.
+     */
+    eventTileViewModel: Pick<EventTileViewModel, "getThreadSummaryViewModel" | "releaseThreadSummaryViewModel">;
     /** Root event for the thread summary. */
     mxEvent: MatrixEvent;
     /** Thread represented by the summary tile. */

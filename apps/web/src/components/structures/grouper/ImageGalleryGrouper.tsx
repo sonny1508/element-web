@@ -1,0 +1,537 @@
+/*
+ * ImageGalleryGrouper.tsx
+ *
+ * Groups consecutive m.image events from the same sender into an
+ * MImageGallery grid with a bubble wrapper. Single images also get
+ * the bubble treatment. Includes hover highlight and right-click
+ * context menu support.
+ *
+ * Custom addition for the Glenda Studio fork.
+ */
+
+import React, { type ReactNode, useState, useCallback, useEffect } from "react";
+import {
+    EventType,
+    MsgType,
+    type MatrixEvent,
+    MatrixEventEvent,
+    type Relations,
+    type Thread,
+    ThreadEvent,
+} from "matrix-js-sdk/src/matrix";
+
+import type MessagePanel from "../MessagePanel";
+import { type WrappedEvent } from "../MessagePanel";
+import { BaseGrouper } from "./BaseGrouper";
+import MImageGallery from "../../views/messages/MImageGallery";
+import { ImageBodyFactory } from "../../views/messages/MBodyFactory";
+import MemberAvatar from "../../views/avatars/MemberAvatar";
+import SenderProfile from "../../views/messages/SenderProfile";
+import { MatrixClientPeg } from "../../../MatrixClientPeg";
+import MessageContextMenu from "../../views/context_menus/MessageContextMenu";
+import { aboveRightOf } from "../ContextMenu";
+import { type RoomPermalinkCreator } from "../../../utils/permalinks/Permalinks";
+import { type Layout } from "../../../settings/enums/Layout";
+import { TimelineRenderingType } from "../../../contexts/RoomContext";
+import { type GetRelationsForEvent, type IReadReceiptProps } from "../../views/rooms/EventTile";
+import { ActionBarAdapter } from "../../views/rooms/EventTile/ActionBarAdapter";
+import { ReactionsRowAdapter } from "../../views/rooms/EventTile/ReactionsRowAdapter";
+import { ThreadSummaryAdapter } from "../../views/rooms/EventTile/ThreadSummaryAdapter";
+import { type IReadReceiptPosition } from "../../views/rooms/ReadReceiptMarker";
+import { ReadReceiptGroup } from "../../views/rooms/ReadReceiptGroup";
+import { roomMemberToMemberInfo } from "../../../hooks/room/useRoomMemberProfile";
+import {
+    EventTileActionBarViewModel,
+    type EventTileActionBarViewModelProps,
+} from "../../../viewmodels/room/EventTileActionBarViewModel";
+import {
+    ReactionsRowViewModel,
+    type ReactionsRowViewModelProps,
+} from "../../../viewmodels/room/timeline/event-tile/reactions/ReactionsRowViewModel";
+import {
+    ThreadSummaryViewModel,
+    type ThreadSummaryViewModelProps,
+} from "../../../viewmodels/room/timeline/event-tile/ThreadSummaryViewModel";
+import { registerGalleryForThread, getGalleryForThread } from "./galleryThreadRegistry";
+
+/**
+ * Tracks the thread rooted at `mxEvent` (if any) and keeps it live-updating,
+ * mirroring EventTile's `state.thread` / `updateThread` / `onNewThread` logic.
+ * Returns the Thread whose root is `mxEvent`, or null.
+ *
+ * This is what lets a gallery's representative image show the "N replies"
+ * thread summary in the timeline, just like a normal text message does.
+ */
+function useEventThread(mxEvent: MatrixEvent): Thread | null {
+    const resolveThread = useCallback((): Thread | null => {
+        let thread: Thread | undefined = mxEvent.getThread();
+        if (!thread) {
+            // Race-condition fallback (same as EventTile.thread getter): the
+            // event may not have its thread wired up yet at sync time.
+            const room = MatrixClientPeg.safeGet().getRoom(mxEvent.getRoomId());
+            thread = room?.findThreadForEvent(mxEvent) ?? undefined;
+        }
+        return thread ?? null;
+    }, [mxEvent]);
+
+    const [thread, setThread] = useState<Thread | null>(() => resolveThread());
+
+    useEffect(() => {
+        setThread(resolveThread());
+
+        const onUpdate = (updated: Thread): void => setThread(updated);
+        const onNewThread = (newThread: Thread): void => {
+            if (newThread.id === mxEvent.getId()) setThread(newThread);
+        };
+
+        mxEvent.on(ThreadEvent.Update, onUpdate);
+        const room = MatrixClientPeg.safeGet().getRoom(mxEvent.getRoomId());
+        room?.on(ThreadEvent.New, onNewThread);
+
+        return () => {
+            mxEvent.off(ThreadEvent.Update, onUpdate);
+            room?.off(ThreadEvent.New, onNewThread);
+        };
+    }, [mxEvent, resolveThread]);
+
+    return thread;
+}
+
+/**
+ * Returns true if the event is an m.room.message with msgtype m.image.
+ */
+function isImageMessage(ev: MatrixEvent): boolean {
+    if (ev.getType() !== EventType.RoomMessage) return false;
+    const content = ev.getContent();
+    return content.msgtype === MsgType.Image;
+}
+
+/**
+ * Max time gap (ms) between consecutive images to still group them.
+ */
+const MAX_GAP_MS = 10_000; // 10 seconds
+
+/**
+ * Owns the child view models that upstream's EventTile adapters (action bar,
+ * reactions row, thread summary) expect to borrow from an `EventTileViewModel`.
+ * The gallery tile renders its own DOM rather than an EventTile, so it supplies
+ * this minimal owner instead, mirroring EventTileViewModel's lazy get/release
+ * lifecycle for each child.
+ */
+class GalleryTileChildViewModels {
+    private actionBarViewModel?: EventTileActionBarViewModel;
+    private reactionsRowViewModel?: ReactionsRowViewModel;
+    private threadSummaryViewModel?: ThreadSummaryViewModel;
+
+    public getActionBarViewModel(props: EventTileActionBarViewModelProps): EventTileActionBarViewModel {
+        this.actionBarViewModel ??= new EventTileActionBarViewModel(props);
+        return this.actionBarViewModel;
+    }
+
+    public releaseActionBarViewModel(): void {
+        this.actionBarViewModel?.dispose();
+        this.actionBarViewModel = undefined;
+    }
+
+    public getReactionsRowViewModel(props: ReactionsRowViewModelProps): ReactionsRowViewModel {
+        this.reactionsRowViewModel ??= new ReactionsRowViewModel(props);
+        return this.reactionsRowViewModel;
+    }
+
+    public releaseReactionsRowViewModel(): void {
+        this.reactionsRowViewModel?.dispose();
+        this.reactionsRowViewModel = undefined;
+    }
+
+    public getThreadSummaryViewModel(props: ThreadSummaryViewModelProps): ThreadSummaryViewModel {
+        this.threadSummaryViewModel ??= new ThreadSummaryViewModel(props);
+        return this.threadSummaryViewModel;
+    }
+
+    public releaseThreadSummaryViewModel(): void {
+        this.threadSummaryViewModel?.dispose();
+        this.threadSummaryViewModel = undefined;
+    }
+}
+
+// -------------------------------------------------------------------------
+// GalleryTile — wrapper providing avatar, hover highlight, action bar,
+// context menu, and read receipts for the aggregated gallery events.
+// -------------------------------------------------------------------------
+
+interface GalleryTileProps {
+    /** Comma-separated event IDs for scroll tracking (all events in the group). */
+    scrollTokens: string;
+    /** The "representative" event used for the context menu (first in group). */
+    mxEvent: MatrixEvent;
+    /** All events in the gallery group (for forwarding). */
+    galleryEvents: MatrixEvent[];
+    layout: Layout | undefined;
+    isOwnEvent: boolean;
+    permalinkCreator?: RoomPermalinkCreator;
+    showReactions?: boolean;
+    getRelationsForEvent?: GetRelationsForEvent;
+    /** Read receipts aggregated across every event in the gallery. */
+    readReceipts?: IReadReceiptProps[];
+    readReceiptMap?: { [userId: string]: IReadReceiptPosition };
+    checkUnmounting?: () => boolean;
+    isTwelveHour?: boolean;
+    /** Hide the sender name row (true in DMs, ≤2 members) — mirrors MessagePanel.shouldHideSender. */
+    hideSender?: boolean;
+    /** Whether to render the "N replies" thread summary. False inside a thread timeline. */
+    showThreadInfo?: boolean;
+    children: ReactNode;
+}
+
+const noop = (): void => {};
+const returnNull = (): null => null;
+
+function GalleryTile({ scrollTokens, mxEvent, galleryEvents, layout, isOwnEvent, permalinkCreator, showReactions, getRelationsForEvent, readReceipts, readReceiptMap, checkUnmounting, isTwelveHour, hideSender, showThreadInfo, children }: GalleryTileProps): ReactNode {
+    const [hover, setHover] = useState(false);
+    const [actionBarFocused, setActionBarFocused] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ left: number; top: number; bottom: number } | null>(null);
+    const [childViewModels] = useState(() => new GalleryTileChildViewModels());
+
+    // Thread rooted at the representative image (if any). Threads are always
+    // created on the first image in the group (the action bar uses imageEvents[0]),
+    // so tracking mxEvent is sufficient to surface the "N replies" summary.
+    const thread = useEventThread(mxEvent);
+
+    // Reactions support
+    const [reactions, setReactions] = useState<Relations | null | undefined>(() => {
+        if (!showReactions || !getRelationsForEvent) return null;
+        return getRelationsForEvent(mxEvent.getId()!, "m.annotation", "m.reaction") ?? null;
+    });
+
+    useEffect(() => {
+        if (!showReactions || !getRelationsForEvent) return;
+        const onRelationsCreated = (relationType: string, eventType: string): void => {
+            if (relationType !== "m.annotation" || eventType !== "m.reaction") return;
+            setReactions(getRelationsForEvent(mxEvent.getId()!, "m.annotation", "m.reaction") ?? null);
+        };
+        mxEvent.on(MatrixEventEvent.RelationsCreated, onRelationsCreated);
+        return () => { mxEvent.off(MatrixEventEvent.RelationsCreated, onRelationsCreated); };
+    }, [mxEvent, showReactions, getRelationsForEvent]);
+
+    // Register gallery events so thread views can find the full group
+    useEffect(() => {
+        if (galleryEvents.length > 1) {
+            registerGalleryForThread(mxEvent.getId()!, galleryEvents);
+        }
+    }, [mxEvent, galleryEvents]);
+
+    const onContextMenu = useCallback(
+        (ev: React.MouseEvent) => {
+            if (ev.target instanceof HTMLImageElement) return;
+
+            ev.preventDefault();
+            ev.stopPropagation();
+            setContextMenu({ left: ev.clientX, top: ev.clientY, bottom: ev.clientY });
+        },
+        [],
+    );
+
+    const onCloseMenu = useCallback(() => setContextMenu(null), []);
+
+    const showActionBar = hover || actionBarFocused || !!contextMenu;
+
+    return (
+        <li
+            className="mx_EventTile mx_EventTile_gallery"
+            data-scroll-tokens={scrollTokens}
+            data-layout={layout}
+            data-self={isOwnEvent}
+            data-hide-sender={hideSender ? "true" : undefined}
+            onContextMenu={onContextMenu}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+        >
+            {mxEvent.sender && (
+                <div className="mx_EventTile_avatar">
+                    <MemberAvatar member={mxEvent.sender} size="30px" viewUserOnClick={true} />
+                </div>
+            )}
+            {/*
+                Always render the SenderProfile so the row reserves vertical
+                space — that keeps the bubble offset down by ~19px and lets the
+                avatar's standard `top: 6px` position line up with the top of
+                the bubble. In DMs (data-hide-sender="true") we then visually
+                hide the name via CSS while preserving the layout space; for
+                own messages the upstream EventBubbleTile CSS already hides
+                `.mx_DisambiguatedProfile` via `display: none`, which collapses
+                the row — that's fine because self messages use `top: -19px`
+                on the avatar (it floats above the bubble) and don't need the
+                offset.
+            */}
+            <SenderProfile
+                senderId={mxEvent.getSender() ?? undefined}
+                member={roomMemberToMemberInfo(mxEvent.sender)}
+                isEmote={false}
+            />
+            {/*
+                mx_EventTile_gallery_lineWrapper mirrors the role of
+                mx_EventTile_line in standard EventBubbleTile:
+                  - position: relative + width: fit-content so that the action
+                    bar's `inset-inline-start: calc(100% - …)` (from
+                    _EventBubbleTile.pcss [data-self="false"]) anchors to the
+                    narrow wrapper right edge ≈ bubble right edge, not to the
+                    full-width <li>.
+                  - For own messages, `margin-inline-start: auto` (via CSS on
+                    [data-self="true"]) pushes it to the right of the <li>.
+                mx_EventTile_msgOption stays OUTSIDE this wrapper so its
+                ReadReceiptGroup's `inset-inline-end: -78px` uses the full-width
+                <li> as its containing block — identical to text bubbles.
+            */}
+            <div className="mx_EventTile_gallery_lineWrapper">
+                {children}
+                {showActionBar && (
+                    // Upstream positions the action bar via a wrapper slot in EventTileView
+                    // rather than on .mx_MessageActionBar itself, so the gallery supplies its own.
+                    <div className="mx_EventTile_gallery_actionBar">
+                        <ActionBarAdapter
+                            eventTileViewModel={childViewModels}
+                            mxEvent={mxEvent}
+                            reactions={reactions}
+                            permalinkCreator={permalinkCreator}
+                            getTile={returnNull}
+                            getReplyChain={returnNull}
+                            onFocusChange={setActionBarFocused}
+                            toggleThreadExpanded={noop}
+                            getRelationsForEvent={getRelationsForEvent}
+                            galleryEvents={galleryEvents.length > 1 ? galleryEvents : undefined}
+                        />
+                    </div>
+                )}
+                {showThreadInfo && thread && thread.id === mxEvent.getId() && (
+                    <div className="mx_EventTile_gallery_threadInfo">
+                        <ThreadSummaryAdapter
+                            eventTileViewModel={childViewModels}
+                            mxEvent={mxEvent}
+                            thread={thread}
+                            data-testid="thread-summary"
+                        />
+                    </div>
+                )}
+            </div>
+            {readReceipts && readReceipts.length > 0 && readReceiptMap && (
+                <div className="mx_EventTile_msgOption">
+                    <ReadReceiptGroup
+                        readReceipts={readReceipts}
+                        readReceiptMap={readReceiptMap}
+                        checkUnmounting={checkUnmounting}
+                        suppressAnimation={false}
+                        isTwelveHour={isTwelveHour}
+                    />
+                </div>
+            )}
+            {showReactions && (
+                <div className="mx_EventTile_footer">
+                    <ReactionsRowAdapter eventTileViewModel={childViewModels} mxEvent={mxEvent} reactions={reactions} />
+                </div>
+            )}
+            {contextMenu && (
+                <MessageContextMenu
+                    {...aboveRightOf(contextMenu)}
+                    mxEvent={mxEvent}
+                    galleryEvents={galleryEvents.length > 1 ? galleryEvents : undefined}
+                    reactions={reactions}
+                    permalinkCreator={permalinkCreator}
+                    onFinished={onCloseMenu}
+                    rightClick={true}
+                />
+            )}
+        </li>
+    );
+}
+
+// -------------------------------------------------------------------------
+// Gallery events registry for thread context
+// -------------------------------------------------------------------------
+
+/**
+ * Look up sibling gallery events from the room's main timeline.
+ * Used in thread view so the root event's gallery can be rendered in full.
+ */
+function findGallerySiblings(event: MatrixEvent): MatrixEvent[] {
+    const room = MatrixClientPeg.safeGet().getRoom(event.getRoomId());
+    if (!room) return [event];
+
+    const timeline = room.getLiveTimeline();
+    const events = timeline.getEvents();
+
+    const eventId = event.getId();
+    const idx = events.findIndex((e) => e.getId() === eventId);
+    if (idx === -1) return [event];
+
+    const sender = event.getSender();
+    const result: MatrixEvent[] = [event];
+
+    for (let i = idx - 1; i >= 0; i--) {
+        const e = events[i];
+        if (!isImageMessage(e) || e.getSender() !== sender) break;
+        if (result[0].getTs() - e.getTs() > MAX_GAP_MS) break;
+        result.unshift(e);
+    }
+
+    for (let i = idx + 1; i < events.length; i++) {
+        const e = events[i];
+        if (!isImageMessage(e) || e.getSender() !== sender) break;
+        if (e.getTs() - result[result.length - 1].getTs() > MAX_GAP_MS) break;
+        result.push(e);
+    }
+
+    return result;
+}
+
+// -------------------------------------------------------------------------
+// Grouper
+// -------------------------------------------------------------------------
+
+export class ImageGalleryGrouper extends BaseGrouper {
+    public static canStartGroup = (_panel: MessagePanel, { event: ev, shouldShow }: WrappedEvent): boolean => {
+        if (!shouldShow) return false;
+        return isImageMessage(ev);
+    };
+
+    public constructor(
+        public readonly panel: MessagePanel,
+        public readonly firstEventAndShouldShow: WrappedEvent,
+        public readonly prevEvent: MatrixEvent | null,
+        public readonly lastShownEvent: MatrixEvent | undefined,
+        nextEvent: WrappedEvent | null,
+        nextEventTile: MatrixEvent | null,
+    ) {
+        super(panel, firstEventAndShouldShow, prevEvent, lastShownEvent, nextEvent, nextEventTile);
+        this.events = [firstEventAndShouldShow];
+    }
+
+    public shouldGroup({ event: ev, shouldShow }: WrappedEvent): boolean {
+        if (!shouldShow) return false;
+        if (!isImageMessage(ev)) return false;
+
+        const first = this.events[0].event;
+        if (ev.getSender() !== first.getSender()) return false;
+
+        const lastInGroup = this.events[this.events.length - 1].event;
+        if (ev.getTs() - lastInGroup.getTs() > MAX_GAP_MS) return false;
+
+        return true;
+    }
+
+    public add(ev: WrappedEvent): void {
+        this.events.push(ev);
+    }
+
+    public getTiles(): ReactNode[] {
+        let imageEvents = this.events.map((we) => we.event);
+        const firstEventId = imageEvents[0].getId()!;
+
+        const isThreadView =
+            this.panel.context?.timelineRenderingType === TimelineRenderingType.Thread;
+
+        // In thread context, restore the full gallery from registry or room timeline
+        if (imageEvents.length === 1 && isThreadView) {
+            const registered = getGalleryForThread(firstEventId);
+            if (registered && registered.length > 1) {
+                imageEvents = registered;
+            } else {
+                const siblings = findGallerySiblings(imageEvents[0]);
+                if (siblings.length > 1) {
+                    imageEvents = siblings;
+                }
+            }
+        }
+
+        const layout = this.panel.props.layout;
+        const myUserId = MatrixClientPeg.safeGet().getUserId();
+        const isOwnEvent = imageEvents[0].getSender() === myUserId;
+
+        // Find caption from any image (MSC2530: filename !== body)
+        let captionText: string | undefined;
+        for (const ev of imageEvents) {
+            const c = ev.getContent();
+            if (c.filename && c.filename !== c.body) {
+                captionText = c.body;
+                break;
+            }
+        }
+
+        // Single image or multi-image grid
+        let mediaContent: ReactNode;
+        if (imageEvents.length === 1) {
+            mediaContent = (
+                <div className="mx_MImageBody_single">
+                    <ImageBodyFactory mxEvent={imageEvents[0]} permalinkCreator={this.panel.props.permalinkCreator} />
+                </div>
+            );
+        } else {
+            // In thread view the panel is narrow; cap the grid to 80% of the
+            // default (400px) so cells stay comfortably visible. On the main
+            // timeline keep the default (500px).
+            mediaContent = (
+                <MImageGallery
+                    events={imageEvents}
+                    permalinkCreator={this.panel.props.permalinkCreator}
+                    onHeightChanged={() => this.panel.forceUpdate()}
+                    maxGridSize={isThreadView ? 400 : undefined}
+                />
+            );
+        }
+
+        // Build comma-separated scroll tokens so the scroll panel can find
+        // this tile regardless of which gallery event it is tracking.
+        const scrollTokens = imageEvents.map((ev) => ev.getId()!).join(",");
+
+        // Collect read receipts for every event in the gallery, deduping by
+        // userId so we don't render the same avatar multiple times. Receipts
+        // are computed once per render by MessagePanel.getReadReceiptsByShownEvent.
+        let galleryReceipts: IReadReceiptProps[] | undefined;
+        if (this.panel.props.showReadReceipts) {
+            const seen = new Set<string>();
+            galleryReceipts = [];
+            for (const ev of imageEvents) {
+                const r = this.panel.readReceiptsByEvent.get(ev.getId()!);
+                if (!r) continue;
+                for (const receipt of r) {
+                    if (seen.has(receipt.userId)) continue;
+                    seen.add(receipt.userId);
+                    galleryReceipts.push(receipt);
+                }
+            }
+            galleryReceipts.sort((a, b) => b.ts - a.ts);
+        }
+
+        return [
+            <GalleryTile
+                key={`gallery-${firstEventId}`}
+                scrollTokens={scrollTokens}
+                mxEvent={imageEvents[0]}
+                galleryEvents={imageEvents}
+                layout={layout}
+                isOwnEvent={isOwnEvent}
+                permalinkCreator={this.panel.props.permalinkCreator}
+                showReactions={this.panel.props.showReactions}
+                getRelationsForEvent={this.panel.props.getRelationsForEvent}
+                readReceipts={galleryReceipts}
+                readReceiptMap={this.panel.readReceiptMap}
+                checkUnmounting={this.panel.isUnmounting}
+                isTwelveHour={this.panel.props.isTwelveHour}
+                hideSender={this.panel.state.hideSender}
+                showThreadInfo={!isThreadView}
+            >
+                <div className="mx_EventTile_gallery_bubble">
+                    {mediaContent}
+                    {captionText && (
+                        <div className="mx_EventTile_galleryCaption">
+                            {captionText}
+                        </div>
+                    )}
+                </div>
+            </GalleryTile>,
+        ];
+    }
+
+    public getNewPrevEvent(): MatrixEvent {
+        return this.events[this.events.length - 1].event;
+    }
+}

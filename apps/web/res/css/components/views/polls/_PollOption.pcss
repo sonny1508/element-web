@@ -93,7 +93,8 @@ Please see LICENSE files in the repository root for full details.
     }
 }
 
-/* options not actionable in these states */
+/* options not actionable in these states (un-vote is handled by a dedicated
+   "Undo vote" button rendered next to the totals row, not by clicking the option) */
 .mx_PollOption_checked,
 .mx_PollOption_ended {
     pointer-events: none;
@@ -113,4 +114,51 @@ Please see LICENSE files in the repository root for full details.
         border-radius: 8px;
         background-color: var(--cpd-color-icon-primary);
     }
+}
+
+.mx_PollOption_voters {
+    margin-top: var(--cpd-space-2x);
+    display: flex;
+    /* keep clicks on avatars from triggering vote/un-vote on the parent option */
+    cursor: default;
+    /* parent option may have `pointer-events: none` (checked or ended); the voters
+       row must remain interactive for the hover tooltips and the click-to-list menu */
+    pointer-events: auto;
+}
+
+.mx_PollOption_votersMenu {
+    min-width: 220px;
+    max-width: 320px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: var(--cpd-space-2x) 0;
+}
+
+.mx_PollOption_votersMenu_title {
+    margin: 0;
+    padding: var(--cpd-space-1x) var(--cpd-space-3x) var(--cpd-space-2x);
+    font-size: $font-12px;
+    font-weight: var(--cpd-font-weight-semibold);
+    color: $secondary-content;
+}
+
+.mx_PollOption_votersMenu_list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.mx_PollOption_votersMenu_person {
+    display: flex;
+    align-items: center;
+    gap: var(--cpd-space-2x);
+    padding: var(--cpd-space-1x) var(--cpd-space-3x);
+    font-size: $font-14px;
+    color: $primary-content;
+}
+
+.mx_PollOption_votersMenu_name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

@@ -55,6 +55,8 @@ export interface ActionBarViewSnapshot {
     isQuoteExpanded: boolean;
     /** Whether starting or replying in a thread is allowed for this event. */
     isThreadReplyAllowed: boolean;
+    /** When true, the download/hide actions operate on a whole gallery group of images; the labels reflect that. */
+    isGalleryGroup?: boolean;
 }
 
 /**
@@ -140,6 +142,7 @@ export function ActionBarView({ vm, className }: Readonly<ActionBarViewProps>): 
         isDownloadLoading,
         isPinned,
         isQuoteExpanded,
+        isGalleryGroup,
     } = useViewModel(vm);
 
     // Track the live button element for each action and keep the callback refs stable
@@ -228,7 +231,7 @@ export function ActionBarView({ vm, className }: Readonly<ActionBarViewProps>): 
         />
     );
 
-    let downloadTitle = _t("action|download");
+    let downloadTitle = isGalleryGroup ? _t("timeline|mab|download_all_in_gallery") : _t("action|download");
     if (isDownloadLoading) {
         downloadTitle = isDownloadEncrypted
             ? _t("timeline|download_action_decrypting")
@@ -251,7 +254,7 @@ export function ActionBarView({ vm, className }: Readonly<ActionBarViewProps>): 
             key={ActionBarAction.Hide}
             presentation={presentation}
             buttonRef={actionButtonRefSetters[ActionBarAction.Hide]}
-            label={_t("action|hide")}
+            label={isGalleryGroup ? _t("timeline|mab|hide_all_in_gallery") : _t("action|hide")}
             onActivate={vm.onHideClick}
             icon={VisibilityOffIcon}
         />

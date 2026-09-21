@@ -18,6 +18,7 @@ import {
     M_POLL_KIND_DISCLOSED,
     M_POLL_RESPONSE,
     M_POLL_START,
+    type RoomMember,
     type TimelineEvents,
 } from "matrix-js-sdk/src/matrix";
 import { RelatedRelations } from "matrix-js-sdk/src/models/related-relations";
@@ -37,13 +38,15 @@ import { type GetRelationsForEvent } from "../rooms/EventTile";
 import PollCreateDialog from "../elements/PollCreateDialog";
 import { MatrixClientPeg } from "../../../MatrixClientPeg";
 import Spinner from "../elements/Spinner";
+import AccessibleButton from "../elements/AccessibleButton";
 import { PollOption } from "../polls/PollOption";
 
 interface IState {
     poll?: Poll;
     // poll instance has fetched at least one page of responses
     pollInitialised: boolean;
-    selected?: string | null | undefined; // Which option was clicked by the local user
+    // Local echo of the current user's answers: null = no echo, [] = locally un-voted, [id] = locally voted
+    selected?: string[] | null;
     voteRelations?: Relations; // Voting (response) events
 }
 
@@ -233,8 +236,19 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
             return;
         }
 
-        const response = PollResponseEvent.from([answerId], this.props.mxEvent.getId()!).serialize();
+        this.sendAnswers([answerId]);
+    }
 
+    private undoVote = (): void => {
+        if (this.state.poll?.isEnded) return;
+        const userId = this.context.getSafeUserId();
+        const myVote = this.collectUserVotes().get(userId)?.answers[0];
+        if (!myVote) return; // nothing to undo
+        this.sendAnswers([]);
+    };
+
+    private sendAnswers(answers: string[]): void {
+        const response = PollResponseEvent.from(answers, this.props.mxEvent.getId()!).serialize();
         this.context
             .sendEvent(
                 this.props.mxEvent.getRoomId()!,
@@ -243,14 +257,12 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
             )
             .catch((e: any) => {
                 console.error("Failed to submit poll response event:", e);
-
                 Modal.createDialog(ErrorDialog, {
                     title: _t("poll|error_voting_title"),
                     description: _t("poll|error_voting_description"),
                 });
             });
-
-        this.setState({ selected: answerId });
+        this.setState({ selected: answers });
     }
 
     /**
@@ -316,9 +328,25 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
         const myVote = userVotes?.get(userId)?.answers[0];
         const disclosed = M_POLL_KIND_DISCLOSED.matches(pollEvent.kind.name);
 
-        // Disclosed: votes are hidden until I vote or the poll ends
+        // Disclosed (open): results are always visible — no need to vote first
         // Undisclosed: votes are hidden until poll ends
-        const showResults = poll.isEnded || (disclosed && myVote !== undefined);
+        const showResults = poll.isEnded || disclosed;
+
+        // Voters per answer id (only meaningful for disclosed polls).
+        // Built from the same `userVotes` map so the local-echo (and un-vote) is reflected.
+        const room = this.context.getRoom(this.props.mxEvent.getRoomId());
+        const votersByAnswer = new Map<string, RoomMember[]>();
+        if (disclosed) {
+            for (const vote of userVotes.values()) {
+                const answerId = vote.answers[0];
+                if (!answerId) continue; // spoiled / un-voted
+                const member = room?.getMember(vote.sender);
+                if (!member) continue;
+                const list = votersByAnswer.get(answerId);
+                if (list) list.push(member);
+                else votersByAnswer.set(answerId, [member]);
+            }
+        }
 
         let totalText: string;
         if (showResults && poll.undecryptableRelationsCount) {
@@ -374,6 +402,7 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
                                     voteCount={answerVotes}
                                     totalVoteCount={totalVotes}
                                     displayVoteCount={showResults}
+                                    voters={disclosed ? (votersByAnswer.get(answer.id) ?? []) : undefined}
                                     onOptionSelected={this.selectOption.bind(this)}
                                 />
                             );
@@ -382,6 +411,16 @@ export default class MPollBody extends React.Component<IBodyProps, IState> {
                     <div data-testid="totalVotes" className="mx_MPollBody_totalVotes">
                         {totalText}
                         {isFetchingResponses && <Spinner size={16} />}
+                        {!poll.isEnded && myVote !== undefined && (
+                            <AccessibleButton
+                                kind="link_inline"
+                                className="mx_MPollBody_undoVote"
+                                onClick={this.undoVote}
+                                aria-label={_t("poll|undo_vote_aria")}
+                            >
+                                {_t("poll|undo_vote")}
+                            </AccessibleButton>
+                        )}
                     </div>
                 </fieldset>
             </PollBodyPresentationAttributes>
@@ -427,7 +466,7 @@ export function allVotes(voteRelations: Relations): Array<UserVote> {
 export function collectUserVotes(
     userResponses: Array<UserVote>,
     userId?: string | null,
-    selected?: string | null,
+    selected?: string[] | string | null,
 ): Map<string, UserVote> {
     const userVotes: Map<string, UserVote> = new Map();
 
@@ -438,8 +477,9 @@ export function collectUserVotes(
         }
     }
 
-    if (selected && userId) {
-        userVotes.set(userId, new UserVote(0, userId, [selected]));
+    if (selected != null && userId) {
+        const answers = Array.isArray(selected) ? selected : [selected];
+        userVotes.set(userId, new UserVote(0, userId, answers));
     }
 
     return userVotes;
