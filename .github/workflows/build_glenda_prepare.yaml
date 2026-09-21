@@ -22,8 +22,9 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Copy config
-        run: cp apps/desktop/glenda-studio/config.json apps/web/
+      # glenda-studio/config.json + every theme in glenda-studio/themes/ (fails the build on an invalid theme)
+      - name: Generate config
+        run: node apps/desktop/glenda-studio/build-config.mjs apps/web/config.json
 
       - name: Build Element Web
         run: pnpm --filter element-web run build
