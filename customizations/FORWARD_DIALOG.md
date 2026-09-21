@@ -4,9 +4,10 @@ The ForwardDialog handles three forwarding cases with different behaviour:
 
 | Content type | Attribution | Sending behaviour |
 |---|---|---|
-| **Text messages** | Reply-format (`<mx-reply>`) showing original sender | Single `m.room.message` with `msgtype: m.text` |
-| **Single image** | None (forwarded as-is, like upstream Element) | Single `m.room.message` with `msgtype: m.image` |
+| **Text messages** (and anything else not listed below, e.g. locations) | Reply-format (`<mx-reply>`) showing original sender | Single `m.room.message` with `msgtype: m.text` |
+| **Single attachment** — image, file (`.zip` …), video, audio / voice message | None (forwarded as-is, like upstream Element) | Single `m.room.message` with the original msgtype and media (`url` or encrypted `file`, `info`, thumbnails) |
 | **Image gallery** | None | Multiple `m.room.message` events sent sequentially |
+| **Sticker** | None | Single `m.sticker` event; an optional message is sent as a follow-up `m.text` (stickers can't carry a caption) |
 
 All forwarded content includes an empty `"m.mentions": {}` to prevent legacy push rules from triggering false mention notifications (see "Fix: Double Desktop Notifications" in `CUSTOM_CHANGES.md`).
 
@@ -20,8 +21,9 @@ ForwardDialog (main component)
   ├── Optional message textarea
   └── Room list → Entry components
         └── Entry.send() → buildForwardContents()
-              ├── Text → buildReplyForwardContent()
-              └── Image(s) → buildImageForwardContent() × N
+              ├── Sticker → buildStickerForwardContent() (+ optional follow-up text)
+              ├── Attachment(s) → buildMediaForwardContent() × N
+              └── Anything else → buildReplyForwardContent()
 
 Data flow for gallery forwarding:
   ImageGalleryGrouper (imageEvents[])
@@ -49,9 +51,9 @@ Text messages use a custom reply format so the original sender is visible in the
 
 If no optional message is provided, the `<p>` tag is omitted. The `> <@sender>` prefix and `<mx-reply>` block are always present for text forwards.
 
-## Image forwarding: buildImageForwardContent()
+## Attachment forwarding: buildMediaForwardContent()
 
-Images are forwarded as-is with no sender attribution. The function:
+Attachments — `m.room.message` events whose msgtype is in `MEDIA_MSGTYPES` (`m.image`, `m.file`, `m.video`, `m.audio`, which includes voice messages) — are forwarded as-is with no sender attribution, so the recipient gets the actual file. Before v1.12.28-glenda.1 only `m.image` took this path; every other attachment fell through to the text reply-format and arrived as a quote of its filename, without the file. The function:
 
 1. Strips `m.relates_to`, `body`, `filename`, `format`, and `formatted_body` from the original content
 2. Preserves all media fields (`url`, `info`, `msgtype`, encrypted media fields, etc.)
@@ -95,10 +97,11 @@ Captions follow the MSC2530 convention: when `filename` exists and differs from 
 
 ## Gallery forwarding: buildForwardContents()
 
-The orchestrator function determines whether to use text or image forwarding:
+The orchestrator function determines how to forward the event:
 
-- **Text:** returns `[buildReplyForwardContent(event, optionalMessage)]`
-- **Image:** returns an array where the first image may carry the user's optional message as a caption, and all subsequent gallery images are forwarded as-is (no caption)
+- **Sticker (`m.sticker`):** returns `[buildStickerForwardContent(event)]`, plus an `m.text` with the optional message if one was typed
+- **Attachment (`isForwardedAsMedia`):** returns an array where the first attachment may carry the user's optional message as a caption, and all subsequent gallery images are forwarded as-is (no caption)
+- **Anything else:** returns `[buildReplyForwardContent(event, optionalMessage)]`
 
 `Entry.send()` iterates this array and calls `cli.sendEvent()` for each, sequentially. The type assertion `evType as keyof TimelineEvents` is needed because the Matrix SDK's `sendEvent` expects a narrower type than the string returned by our builders.
 
@@ -137,15 +140,16 @@ Uses a custom `.mx_ForwardDialog_galleryPreview` container:
 
 The avatar is rendered as a plain `<img>` element (not `MemberAvatar`) because the gallery preview bypasses `EventTile` entirely.
 
-### Single image / text preview (isGallery = false)
+### Single attachment / text preview (isGallery = false)
 
-Uses `EventTile` with a mock event built from `buildImageForwardContent` (image) or `buildReplyForwardContent` (text). The mock event's sender is set to the current user with their profile info.
+Uses `EventTile` (wrapped in `EventPresentationContextProvider`) with a mock event built from the first entry of `buildForwardContents()`, so the preview shows exactly what will be sent (a real file tile for attachments, the reply-format bubble for text). The mock event's sender is set to the current user with their profile info.
 
-### Bubble avatar fix
+### Dialog width and preview scrolling
 
-The bubble layout positions the sender avatar with `position: absolute; left: -36px` (others) or `right: -38px` (self) via `_EventBubbleTile.pcss`. The preview container previously used `overflow-y: auto`, which creates a clipping context that hides the avatar.
-
-**Fix:** Changed to `overflow: visible` with `padding-left: 50px; padding-right: 50px` to provide space for the absolutely-positioned avatar without clipping.
+- `.mx_ForwardDialog` is `min(760px, calc(90vw - 2 * var(--cpd-space-10x)))` wide (upstream: 520px), so bubbles have room and the dialog still fits narrow windows.
+- `.mx_ForwardDialog_preview` scrolls (`overflow-y: auto`, `max-height: 45%`): a long message is clipped inside the preview and revealed by scrolling, instead of drawing over the message box and room list. (An earlier version used `overflow: visible`, which caused exactly that overlap.)
+- Because the preview always shows *our own* message, the bubble avatar sits top-right, ~19px above the bubble: `padding-top: 20px` keeps it inside the scroll box; horizontally it lives in the tile's 60px inline-end margin, so no side padding is needed.
+- Inside the preview, `.mx_EventTile` overrides `--event-tile-bubble-line-max-width: 100%` (timeline default 70%) and `--event-tile-bubble-margin-inline-start: 0px` (that margin only exists for other senders' avatars), so the bubble uses the dialog's full width.
 
 ## Optional message textarea
 
@@ -164,7 +168,7 @@ Below the preview, a textarea allows the user to type an optional message:
 | `apps/web/src/components/structures/grouper/ImageGalleryGrouper.tsx` | Added `galleryEvents` prop to `GalleryTileProps`, passes `imageEvents` through |
 | `apps/web/src/dispatcher/payloads/OpenForwardDialogPayload.ts` | Added `extraEvents?: MatrixEvent[]` |
 | `apps/web/src/utils/DialogOpener.ts` | Passes `extraEvents` to ForwardDialog modal |
-| `apps/web/res/css/views/dialogs/_ForwardDialog.pcss` | Gallery preview styles, bubble avatar overflow fix |
+| `apps/web/res/css/views/dialogs/_ForwardDialog.pcss` | Gallery preview styles, wider dialog, scrolling preview with full-width bubble |
 
 ## Removed dead code
 

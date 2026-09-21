@@ -124,7 +124,7 @@ See `customizations/IMAGE_GALLERY_GROUPING.md` for full architecture documentati
 
 ## Forward Dialog: Image & Gallery Forwarding
 
-The ForwardDialog was rewritten to properly handle image and gallery forwarding. Text messages continue using the custom reply-format (showing the original sender). Images are forwarded as-is with no sender attribution (matching original Element behaviour). Gallery forwarding sends all images in the group as separate events. The dialog preview shows bubble avatar correctly and renders gallery images in a grid.
+The ForwardDialog was rewritten to properly handle attachment and gallery forwarding. Text messages continue using the custom reply-format (showing the original sender). Attachments (images, files, videos, audio / voice messages) and stickers are forwarded as-is with no sender attribution (matching original Element behaviour), so the recipient gets the actual file. Gallery forwarding sends all images in the group as separate events. The dialog is wider than upstream's, and long previews scroll inside the preview area; gallery images render in a grid.
 
 See `customizations/FORWARD_DIALOG.md` for full implementation documentation.
 
@@ -134,10 +134,11 @@ See `customizations/FORWARD_DIALOG.md` for full implementation documentation.
   - Removed `transformEvent()` and its ~12 unused imports (location events, beacons, editor model, etc.)
   - Removed unused `type`/`content` props from `IEntryProps`; Entry now builds content internally
   - Added `extraEvents?: MatrixEvent[]` to `IProps` for gallery forwarding
-  - New `buildImageForwardContent()`: forwards images as-is, no `<mx-reply>` attribution; preserves or replaces caption via MSC2530 (body = caption, filename = original filename)
-  - New `buildForwardContents()`: orchestrator that dispatches to `buildReplyForwardContent` (text) or `buildImageForwardContent` (images); returns multiple events for galleries
+  - New `buildMediaForwardContent()`: forwards attachments (`m.image`, `m.file`, `m.video`, `m.audio`) as-is, no `<mx-reply>` attribution; preserves or replaces caption via MSC2530 (body = caption, filename = original filename)
+  - New `buildStickerForwardContent()`: forwards stickers as `m.sticker` (optional message goes in a follow-up text)
+  - New `buildForwardContents()`: orchestrator that dispatches to the builders above or `buildReplyForwardContent` (text and everything else); returns multiple events for galleries
   - `Entry.send()` iterates the event array and sends sequentially
-  - Preview: galleries render via `MImageGallery` with a manual avatar; single images/text use `EventTile`
+  - Preview: galleries render via `MImageGallery` with a manual avatar; everything else previews the first event from `buildForwardContents()` in an `EventTile`
   - Preview `EventTile` is wrapped in upstream's `EventPresentationContextProvider` (required since v1.12.2x)
   - Added optional message textarea (caption for images, appended to reply for text)
 - `apps/web/src/components/views/context_menus/MessageContextMenu.tsx`
@@ -152,7 +153,10 @@ See `customizations/FORWARD_DIALOG.md` for full implementation documentation.
   - Passes `extraEvents` through to `ForwardDialog` modal
 - `apps/web/res/css/views/dialogs/_ForwardDialog.pcss`
   - New `.mx_ForwardDialog_galleryPreview`: flex container with inline avatar + bubble wrapper for gallery grid preview
-  - Fixed `.mx_ForwardDialog_preview`: changed `overflow-y: auto` to `overflow: visible` and added `padding-left/right: 50px` to prevent clipping of absolutely-positioned bubble avatars
+  - `.mx_ForwardDialog` width `min(760px, calc(90vw - 2 * var(--cpd-space-10x)))` (upstream 520px)
+  - `.mx_ForwardDialog_preview`: scrolls (`overflow-y: auto`, max 45% of the dialog) with `padding-top: 20px` so the own-message avatar isn't clipped; bubble allowed full width inside the preview (`--event-tile-bubble-line-max-width: 100%`, `--event-tile-bubble-margin-inline-start: 0px`)
+- `apps/web/test/unit-tests/components/views/dialogs/ForwardDialog-test.tsx`
+  - New "Attachments" tests: file, caption, voice message, sticker are forwarded as the real media
 
 ## Open Poll UX (undo vote, voter avatars, always-visible results)
 

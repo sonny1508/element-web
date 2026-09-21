@@ -309,6 +309,82 @@ describe("ForwardDialog", () => {
         });
     });
 
+    describe("Attachments", () => {
+        const roomId = "a";
+        const sendClick = (container: HTMLElement): void =>
+            act(() => {
+                const sendButton = container.querySelector(".mx_ForwardList_sendButton");
+                fireEvent.click(sendButton!);
+            });
+        const fileContent = {
+            msgtype: "m.file",
+            body: "Batch02.zip",
+            url: "mxc://example.org/abcdef",
+            info: { size: 48213442, mimetype: "application/zip" },
+        };
+        const makeAttachment = (content: object, type = "m.room.message") =>
+            mkEvent({
+                type,
+                room: sourceRoom,
+                user: aliceId,
+                content: { ...content, "m.relates_to": { "m.in_reply_to": { event_id: "$parent" } } },
+                event: true,
+            });
+
+        it("forwards a file as the original attachment, not a quoted text message", async () => {
+            const { container } = mountForwardDialog(makeAttachment(fileContent));
+            sendClick(container);
+            expect(mockClient.sendEvent).toHaveBeenCalledWith(roomId, "m.room.message", {
+                ...fileContent,
+                "m.mentions": {},
+            });
+        });
+
+        it("sends the optional message as the attachment's caption", async () => {
+            const { container } = mountForwardDialog(makeAttachment(fileContent));
+            fireEvent.change(container.querySelector("#mx_ForwardDialog_messageInput")!, {
+                target: { value: "Here you go" },
+            });
+            sendClick(container);
+            expect(mockClient.sendEvent).toHaveBeenCalledWith(roomId, "m.room.message", {
+                ...fileContent,
+                "body": "Here you go",
+                "filename": "Batch02.zip",
+                "m.mentions": {},
+            });
+        });
+
+        it("forwards a voice message as audio", async () => {
+            const voiceContent = {
+                "msgtype": "m.audio",
+                "body": "Voice message",
+                "url": "mxc://example.org/voice",
+                "info": { duration: 4000, mimetype: "audio/ogg" },
+                "org.matrix.msc3245.voice": {},
+            };
+            const { container } = mountForwardDialog(makeAttachment(voiceContent));
+            sendClick(container);
+            expect(mockClient.sendEvent).toHaveBeenCalledWith(roomId, "m.room.message", {
+                ...voiceContent,
+                "m.mentions": {},
+            });
+        });
+
+        it("forwards a sticker as a sticker", async () => {
+            const stickerContent = {
+                body: "Thumbs up",
+                url: "mxc://example.org/sticker",
+                info: { w: 128, h: 128, mimetype: "image/png" },
+            };
+            const { container } = mountForwardDialog(makeAttachment(stickerContent, EventType.Sticker));
+            sendClick(container);
+            expect(mockClient.sendEvent).toHaveBeenCalledWith(roomId, EventType.Sticker, {
+                ...stickerContent,
+                "m.mentions": {},
+            });
+        });
+    });
+
     describe("Location events", () => {
         // 14.03.2022 16:15
         const now = 1647270879403;

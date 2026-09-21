@@ -224,11 +224,19 @@ const buildReplyForwardContent = (
     return { type: EventType.RoomMessage, content };
 };
 
-// Build forward content for an image event.
-// Images are forwarded as-is (like original Element behaviour) — no sender attribution.
+// Attachment msgtypes that are forwarded as the original media rather than as a quoted text reply.
+// These are also the msgtypes Element renders MSC2530 captions for.
+const MEDIA_MSGTYPES: string[] = [MsgType.Image, MsgType.File, MsgType.Video, MsgType.Audio];
+
+const isForwardedAsMedia = (event: MatrixEvent): boolean =>
+    event.getType() === EventType.RoomMessage && MEDIA_MSGTYPES.includes(event.getContent().msgtype ?? "");
+
+// Build forward content for an attachment event (image, file, video, audio / voice message).
+// Attachments are forwarded as-is (like original Element behaviour) — no sender attribution —
+// keeping the media fields (url or encrypted `file`, info, thumbnails …) so the recipient gets the real file.
 // If the user typed an optional message it becomes an MSC2530 caption
 // (body = message text, filename = original filename so clients know it's a caption).
-const buildImageForwardContent = (
+const buildMediaForwardContent = (
     event: MatrixEvent,
     optionalMessage: string,
 ): { type: string; content: IContent } => {
@@ -244,7 +252,7 @@ const buildImageForwardContent = (
         ...mediaFields
     } = originalContent;
 
-    const originalFilename = originalContent.filename || originalContent.body || "image";
+    const originalFilename = originalContent.filename || originalContent.body || _t("common|attachment");
     const hasOriginalCaption =
         originalContent.filename && originalContent.filename !== originalContent.body;
     const originalCaption = hasOriginalCaption ? originalContent.body : undefined;
@@ -254,7 +262,7 @@ const buildImageForwardContent = (
     const caption = optionalMessage || originalCaption;
 
     if (!caption) {
-        // Plain image, no caption — forward as-is
+        // No caption — forward as-is
         return {
             type: EventType.RoomMessage,
             content: {
@@ -266,7 +274,7 @@ const buildImageForwardContent = (
         };
     }
 
-    // Image with caption (MSC2530 style): body = caption text, filename = original file name
+    // With caption (MSC2530 style): body = caption text, filename = original file name
     return {
         type: EventType.RoomMessage,
         content: {
@@ -278,27 +286,43 @@ const buildImageForwardContent = (
     };
 };
 
+// Build forward content for a sticker: forwarded as-is (a sticker event can't carry a caption).
+const buildStickerForwardContent = (event: MatrixEvent): { type: string; content: IContent } => {
+    const { "m.relates_to": _rel, ...content } = event.getContent();
+    return { type: EventType.Sticker, content: { ...content, "m.mentions": {} } };
+};
+
 // Build all forward events for sending (may return multiple for gallery)
 const buildForwardContents = (
     event: MatrixEvent,
     extraEvents: MatrixEvent[] | undefined,
     optionalMessage: string,
 ): Array<{ type: string; content: IContent }> => {
-    const isImage = event.getContent().msgtype === MsgType.Image;
+    if (event.getType() === EventType.Sticker) {
+        const results = [buildStickerForwardContent(event)];
+        // Stickers have nowhere to put a caption, so send the optional message as a follow-up text.
+        if (optionalMessage) {
+            results.push({
+                type: EventType.RoomMessage,
+                content: { "msgtype": MsgType.Text, "body": optionalMessage, "m.mentions": {} },
+            });
+        }
+        return results;
+    }
 
-    if (!isImage) {
+    if (!isForwardedAsMedia(event)) {
         return [buildReplyForwardContent(event, optionalMessage)];
     }
 
     const results: Array<{ type: string; content: IContent }> = [];
 
-    // First image may carry the user's optional message as caption
-    results.push(buildImageForwardContent(event, optionalMessage));
+    // The first attachment may carry the user's optional message as caption
+    results.push(buildMediaForwardContent(event, optionalMessage));
 
     // Additional gallery images forwarded as-is (no caption)
     if (extraEvents) {
         for (const imgEvent of extraEvents) {
-            results.push(buildImageForwardContent(imgEvent, ""));
+            results.push(buildMediaForwardContent(imgEvent, ""));
         }
     }
 
@@ -317,16 +341,14 @@ const ForwardDialog: React.FC<IProps> = ({ matrixClient: cli, event, extraEvents
     const allImageEvents = isImage ? [event, ...(extraEvents ?? [])] : [];
     const isGallery = allImageEvents.length > 1;
 
-    // Build preview content: for images use image forward content, for text use reply format
-    const previewContent = isImage
-        ? buildImageForwardContent(event, optionalMessage).content
-        : buildReplyForwardContent(event, optionalMessage).content;
+    // Preview the first event that will actually be sent (media as-is, text in reply format, …)
+    const [preview] = buildForwardContents(event, undefined, optionalMessage);
 
     // For the message preview we fake the sender as ourselves
     const mockEvent = new MatrixEvent({
-        type: "m.room.message",
+        type: preview.type,
         sender: userId,
-        content: previewContent,
+        content: preview.content,
         unsigned: {
             age: 97,
         },

@@ -73,7 +73,9 @@ Please see LICENSE files in the repository root for full details.
 
 /* Original */
 .mx_ForwardDialog {
-    width: 520px;
+    /* Wider than upstream's 520px so the forwarded bubble has room to breathe; capped so the
+       dialog (plus .mx_Dialog's var(--cpd-space-10x) side padding) still fits narrow windows. */
+    width: min(760px, calc(90vw - 2 * var(--cpd-space-10x)));
     color: $primary-content;
     display: flex;
     flex-direction: column;
@@ -92,12 +94,24 @@ Please see LICENSE files in the repository root for full details.
     > .mx_ForwardDialog_preview {
         max-height: 45%;
         flex-shrink: 0;
-        overflow: visible;
 
-        /* Horizontal padding so the absolutely-positioned bubble avatar
-           (left: -36px for others, right: -38px for self) is not clipped. */
-        padding-left: 50px;
-        padding-right: 50px;
+        /* Long messages scroll inside the preview (clipped behind its edges) instead of
+           spilling over the message box and room list below. */
+        overflow-x: hidden;
+        overflow-y: auto;
+
+        /* The preview always shows our own message, whose bubble avatar floats ~19px above the
+           bubble: the top padding keeps it inside the scroll box so it isn't clipped. (Sideways it
+           sits within the tile's own 60px inline-end margin, so no horizontal padding is needed.) */
+        padding: 20px 0 4px;
+
+        .mx_EventTile {
+            /* A preview doesn't need the timeline's 70% bubble cap; let the bubble use the width. */
+            --event-tile-bubble-line-max-width: 100%;
+            /* The inline-start margin only makes room for other senders' avatars, which never
+               appear here; drop it so the bubble lines up with the rest of the dialog. */
+            --event-tile-bubble-margin-inline-start: 0px;
+        }
 
         div {
             pointer-events: none;
