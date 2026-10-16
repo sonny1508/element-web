@@ -88,7 +88,7 @@ jobs:
 
       - name: Build App
         working-directory: apps/desktop
-        run: pnpm run build --publish never -w squirrel
+        run: pnpm run build --publish never -w squirrel msi
         shell: bash
         env:
           VARIANT_PATH: variant.json
